@@ -1981,7 +1981,7 @@ function initSettingsPage() {
     };
 
     /* About */
-    document.getElementById('checkUpdatesBtn').onclick = () => showToast('You're on the latest version ✓');
+    document.getElementById('checkUpdatesBtn').onclick = () => showToast("You're on the latest version ✓");
 
     /* Apply all saved settings on init */
     applyTheme(docmanSettings.theme || 'dark');
