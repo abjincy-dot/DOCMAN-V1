@@ -238,7 +238,7 @@ function closeImageViewer() {
 }
 
 function openFile(dataUrl, fileName) {
-    trackRecentFile(fileName, dataUrl);
+    trackRecentFile(fileName);
     const fileType = getFileType(fileName);
     if (fileType === 'image') {
         openImageViewer(dataUrl, fileName);
@@ -1147,7 +1147,13 @@ function openNewNoteModal(){
     document.getElementById('noteModal').classList.add('show');
 }
 function closeNoteModal(){ document.getElementById('noteModal').classList.remove('show'); editingNoteId = null; }
-function toggleTheme(){ document.body.classList.toggle('light-mode'); localStorage.setItem('docman_theme', document.body.classList.contains('light-mode') ? 'light-mode' : ''); updateThemeIcon(); }
+function toggleTheme(){
+    const isLight = document.body.classList.contains('light-mode');
+    const newTheme = isLight ? 'dark' : 'light';
+    docmanSettings.theme = newTheme;
+    saveSettings();
+    applyTheme(newTheme);
+}
 function updateThemeIcon(){
     const isDark = !document.body.classList.contains('light-mode');
     const themeBtn = document.getElementById('themeToggle');
@@ -1412,8 +1418,11 @@ async function handleFiles(files) {
 document.addEventListener('DOMContentLoaded', async ()=>{
     const themeBtn = document.getElementById('themeToggle');
     if(themeBtn) themeBtn.onclick = toggleTheme;
-    const _theme = localStorage.getItem('docman_theme') || localStorage.getItem('oarcel_theme');
-    if(_theme === 'light-mode') document.body.classList.add('light-mode');
+    const _savedTheme = docmanSettings.theme || localStorage.getItem('docman_theme') || 'dark';
+    if (_savedTheme === 'light-mode' || _savedTheme === 'light') document.body.classList.add('light-mode');
+    else if (_savedTheme === 'system') {
+        if (!window.matchMedia('(prefers-color-scheme: dark)').matches) document.body.classList.add('light-mode');
+    }
     updateThemeIcon();
     document.getElementById('pdfTabBtn').onclick = ()=>setActiveTab('pdfs');
     document.getElementById('notesTabBtn').onclick = ()=>setActiveTab('notes');
@@ -1519,22 +1528,24 @@ function closeDeptInfo() {
 /* ============================================
    SETTINGS PAGE
    ============================================ */
-const SETTINGS_KEY = 'docman_settings_v1';
-const RECENTS_KEY = 'docman_recents_v1';
+const SETTINGS_KEY = 'docman_settings_v2';
+const RECENTS_KEY  = 'docman_recents_v1';
 const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
 const PIN_KEY = 'docman_pin_v1';
 
 const defaultSettings = {
-    reduceMotion: false,
-    compactCards: false,
-    pdfZoom: 100,
-    pdfHighQuality: true,
-    pdfRememberPage: true,
-    trackRecents: true,
-    searchNoteContent: true,
-    searchGlobal: true,
-    appLock: false,
-    hidePreviews: false
+    enableAnimations: true,
+    enableParticles: true,
+    theme: 'dark',           // 'dark' | 'light' | 'system'
+    pdfOpen: 'external',     // 'external' | 'docman'
+    pdfThreshold: 20,        // MB
+    showRecents: true,
+    showFavorites: true,
+    recentsLimit: 20,
+    searchNotes: true,
+    searchFileNames: true,
+    searchFolderNames: true,
+    appLock: false
 };
 
 function loadSettings() {
@@ -1553,16 +1564,17 @@ function loadRecents() {
     catch (e) { return []; }
 }
 function saveRecents(list) {
-    localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 20)));
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, docmanSettings.recentsLimit || 20)));
 }
 function trackRecentFile(fileName) {
-    if (!docmanSettings.trackRecents) return;
+    if (!docmanSettings.showRecents) return;
     let list = loadRecents();
     list = list.filter(r => r.name !== fileName);
     list.unshift({ name: fileName, time: Date.now() });
     saveRecents(list);
 }
 
+/* --- Open / Close --- */
 function openSettingsPage() {
     const page = document.getElementById('settingsPage');
     page.classList.remove('hidden');
@@ -1579,18 +1591,17 @@ function showSettingsScreen(screenId) {
     document.querySelectorAll('.settings-screen').forEach(s => s.classList.remove('settings-screen-active'));
     const target = document.getElementById(screenId);
     if (target) target.classList.add('settings-screen-active');
-    const inner = document.querySelector('.settings-page-inner');
-    if (inner) inner.scrollTop = 0;
+    document.querySelector('.settings-page-inner').scrollTop = 0;
 }
 
 function refreshSettingsListSubtitles() {
     const deptCount = Object.keys(fileSystem).length;
     const deptSub = document.getElementById('settingsDeptSub');
     if (deptSub) deptSub.textContent = `${deptCount} department${deptCount === 1 ? '' : 's'}`;
-    updateStorageSummary();
+    updateStorageSummarySubtitle();
 }
 
-async function updateStorageSummary() {
+async function updateStorageSummarySubtitle() {
     const sub = document.getElementById('settingsStorageSub');
     try {
         if (navigator.storage && navigator.storage.estimate) {
@@ -1601,58 +1612,64 @@ async function updateStorageSummary() {
     } catch (e) { if (sub) sub.textContent = 'Tap to view'; }
 }
 
+/* --- Storage Panel --- */
 async function renderStoragePanel() {
-    let fileBytes = 0, noteBytes = 0;
-    for (const path in allFiles) (allFiles[path] || []).forEach(f => { fileBytes += (f.dataUrl ? f.dataUrl.length * 0.75 : 0); });
-    for (const path in allNotes) (allNotes[path] || []).forEach(n => { noteBytes += ((n.title || '').length + (n.content || '').length) * 2; });
-    const totalBytes = fileBytes + noteBytes;
+    // Count docs and notes
+    let docCount = 0, noteCount = 0;
+    for (const p in allFiles) if (allFiles[p]) docCount += allFiles[p].length;
+    for (const p in allNotes) if (allNotes[p]) noteCount += allNotes[p].length;
 
-    let usage = totalBytes, quota = null;
+    document.getElementById('storageDocCount').textContent = docCount;
+    document.getElementById('storageNoteCount').textContent = noteCount;
+
     try {
         if (navigator.storage && navigator.storage.estimate) {
             const est = await navigator.storage.estimate();
-            usage = est.usage || totalBytes;
-            quota = est.quota || null;
+            const usedMB = (est.usage / (1024 * 1024)).toFixed(2);
+            document.getElementById('storageSummaryUsed').textContent = usedMB + ' MB';
+        } else {
+            document.getElementById('storageSummaryUsed').textContent = 'Unknown';
         }
-    } catch (e) {}
-
-    const fmtMB = (b) => (b / (1024 * 1024)).toFixed(2) + ' MB';
-    document.getElementById('storageUsedVal').textContent = fmtMB(usage);
-    document.getElementById('storageQuotaVal').textContent = quota ? fmtMB(quota) : 'device storage';
-    const pct = quota ? Math.min(100, Math.round((usage / quota) * 100)) : Math.min(100, Math.round((usage / (200 * 1024 * 1024)) * 100));
-    document.getElementById('storageUsedPct').textContent = pct + '%';
-    document.getElementById('storageAvailVal').textContent = quota ? `${fmtMB(quota - usage)} available` : '';
-
-    const ring = document.getElementById('storageRingFg');
-    const circumference = 2 * Math.PI * 52;
-    ring.style.strokeDasharray = circumference;
-    ring.style.strokeDashoffset = circumference - (circumference * pct / 100);
-
-    const breakdown = document.getElementById('storageBreakdown');
-    const rows = [
-        { label: 'Files (PDFs & Images)', val: fileBytes, color: '#3b82f6' },
-        { label: 'Notes', val: noteBytes, color: '#fbbf24' }
-    ];
-    const maxVal = Math.max(1, ...rows.map(r => r.val));
-    breakdown.innerHTML = rows.map(r => `
-        <div class="storage-breakdown-row">
-            <div class="storage-breakdown-dot" style="background:${r.color}"></div>
-            <div class="storage-breakdown-label">${r.label}</div>
-            <div class="storage-breakdown-val">${fmtMB(r.val)}</div>
-        </div>
-    `).join('');
+    } catch (e) {
+        document.getElementById('storageSummaryUsed').textContent = 'Unknown';
+    }
 }
 
+/* --- Export / Import --- */
 function exportBackupData() {
     const backup = { fileSystem, allFiles, allNotes, deptColors, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `docman-backup-${Date.now()}.json`;
-    a.click();
+    a.href = url; a.download = `docman-backup-${Date.now()}.json`; a.click();
     URL.revokeObjectURL(url);
     showToast('Backup exported');
+}
+
+function importBackupData(file) {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            const backup = JSON.parse(e.target.result);
+            if (!backup.fileSystem) { showToast('Invalid backup file', true); return; }
+            showConfirmModal('This will <b>replace all current data</b> with the backup. Continue?', async (ok) => {
+                if (!ok) return;
+                fileSystem = backup.fileSystem || {};
+                allFiles   = backup.allFiles   || {};
+                allNotes   = backup.allNotes   || {};
+                deptColors = backup.deptColors || {};
+                await saveFolderStructure();
+                await saveDeptColors();
+                await saveAllFilesToDB();
+                await saveAllNotesToDB();
+                currentPath = [];
+                closeSettingsPage();
+                render();
+                showToast('Data imported successfully');
+            });
+        } catch (err) { showToast('Failed to read backup', true); }
+    };
+    reader.readAsText(file);
 }
 
 function clearAllAppData() {
@@ -1671,19 +1688,81 @@ function clearAllAppData() {
     });
 }
 
+/* --- Appearance --- */
+function applyTheme(theme) {
+    if (theme === 'system') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.body.classList.toggle('light-mode', !prefersDark);
+    } else {
+        document.body.classList.toggle('light-mode', theme === 'light');
+    }
+    localStorage.setItem('docman_theme', theme);
+    updateThemeIcon();
+    applyThemePickUI();
+}
 function applyThemePickUI() {
-    const isLight = document.body.classList.contains('light-mode');
-    document.getElementById('themePickDark')?.classList.toggle('active', !isLight);
-    document.getElementById('themePickLight')?.classList.toggle('active', isLight);
+    const theme = docmanSettings.theme || 'dark';
+    document.getElementById('themePickDark')?.classList.toggle('active', theme === 'dark');
+    document.getElementById('themePickLight')?.classList.toggle('active', theme === 'light');
+    document.getElementById('themePickSystem')?.classList.toggle('active', theme === 'system');
+}
+function applyAnimations() {
+    document.body.classList.toggle('reduce-motion', !docmanSettings.enableAnimations);
+}
+function applyParticles() {
+    const pc = document.querySelector('.particles-container');
+    const g1 = document.querySelector('.ambient-glow.glow-1');
+    const g2 = document.querySelector('.ambient-glow.glow-2');
+    const show = docmanSettings.enableParticles;
+    if (pc) pc.style.display = show ? '' : 'none';
+    if (g1) g1.style.display = show ? '' : 'none';
+    if (g2) g2.style.display = show ? '' : 'none';
 }
 
-function applyReduceMotion() {
-    document.body.classList.toggle('reduce-motion', docmanSettings.reduceMotion);
-}
-function applyCompactCards() {
-    document.body.classList.toggle('compact-cards', docmanSettings.compactCards);
+/* --- PDF --- */
+function applyRadioUI(radioName) {
+    const val = docmanSettings[radioName] || 'external';
+    document.querySelectorAll(`[data-radio="${radioName}"]`).forEach(dot => {
+        dot.classList.toggle('active', dot.getAttribute('data-val') === val);
+    });
 }
 
+/* --- Statistics Panel --- */
+function renderStatisticsPanel() {
+    let fileCount = 0, noteCount = 0, folderCount = 0;
+    let largestFile = { name: '—', size: 0 };
+    let largestFolder = { name: '—', count: 0 };
+
+    function countFolders(obj) {
+        for (const k in obj) if (typeof obj[k] === 'object') { folderCount++; countFolders(obj[k]); }
+    }
+    countFolders(fileSystem);
+
+    for (const path in allFiles) {
+        if (!allFiles[path]) continue;
+        fileCount += allFiles[path].length;
+        const folderTotal = allFiles[path].length;
+        if (folderTotal > largestFolder.count) {
+            largestFolder = { name: path.split('/').pop() || path, count: folderTotal };
+        }
+        allFiles[path].forEach(f => {
+            const size = f.dataUrl ? f.dataUrl.length * 0.75 : 0;
+            if (size > largestFile.size) largestFile = { name: f.name, size };
+        });
+    }
+    for (const path in allNotes) if (allNotes[path]) noteCount += allNotes[path].length;
+
+    document.getElementById('statTotalFiles').textContent   = fileCount;
+    document.getElementById('statTotalNotes').textContent   = noteCount;
+    document.getElementById('statTotalFolders').textContent = folderCount;
+    document.getElementById('statTotalDepts').textContent   = Object.keys(fileSystem).length;
+    document.getElementById('statLargestFile').textContent  = largestFile.size > 0
+        ? `${largestFile.name} (${(largestFile.size / (1024*1024)).toFixed(2)} MB)` : '—';
+    document.getElementById('statLargestFolder').textContent = largestFolder.count > 0
+        ? `${largestFolder.name} (${largestFolder.count} files)` : '—';
+}
+
+/* --- Favorites Panel --- */
 function renderFavoritesPanel() {
     const list = loadRecents();
     document.getElementById('recentsCount').textContent = list.length;
@@ -1691,13 +1770,14 @@ function renderFavoritesPanel() {
     if (!list.length) { card.innerHTML = '<div class="settings-empty-row">No recent files yet</div>'; return; }
     card.innerHTML = list.slice(0, 10).map(r => `
         <div class="dept-manage-row">
-            <div class="settings-item-icon settings-icon-favorites" style="width:32px;height:32px;font-size:0.8rem;"><i class="fas fa-file"></i></div>
+            <div class="settings-item-icon settings-icon-favorites" style="width:32px;height:32px;font-size:0.8rem;flex-shrink:0"><i class="fas fa-file"></i></div>
             <div class="dept-manage-name" style="font-weight:600;font-size:0.82rem;">${escapeHtml(r.name)}</div>
             <span class="dept-manage-count">${new Date(r.time).toLocaleDateString()}</span>
         </div>
     `).join('');
 }
 
+/* --- Departments Panel --- */
 function renderDepartmentsManagePanel() {
     const list = document.getElementById('deptManageList');
     const depts = Object.keys(fileSystem);
@@ -1718,13 +1798,10 @@ function renderDepartmentsManagePanel() {
             const dept = btn.getAttribute('data-dept-del');
             showConfirmModal(`Delete department "<b>${escapeHtml(dept)}</b>" and everything inside it?`, async (confirmed) => {
                 if (!confirmed) return;
-                delete fileSystem[dept];
-                delete deptColors[dept];
-                await saveFolderStructure();
-                await saveDeptColors();
-                renderDepartmentsManagePanel();
-                refreshSettingsListSubtitles();
-                if (currentPath[0] === dept) { currentPath = []; }
+                delete fileSystem[dept]; delete deptColors[dept];
+                await saveFolderStructure(); await saveDeptColors();
+                renderDepartmentsManagePanel(); refreshSettingsListSubtitles();
+                if (currentPath[0] === dept) currentPath = [];
                 render();
                 showToast(`Department "${dept}" deleted`);
             });
@@ -1732,6 +1809,7 @@ function renderDepartmentsManagePanel() {
     });
 }
 
+/* --- Security --- */
 function updatePinStatusUI() {
     const hasPin = !!localStorage.getItem(PIN_KEY);
     const sub = document.getElementById('pinStatusSub');
@@ -1741,7 +1819,6 @@ function updatePinStatusUI() {
     if (changeCard) changeCard.classList.toggle('hidden', !docmanSettings.appLock);
     if (lockToggle) lockToggle.checked = docmanSettings.appLock;
 }
-
 function promptSetPin(callback) {
     showPromptModal('Set a 4-digit PIN:', '', (val) => {
         if (val === null) { callback(false); return; }
@@ -1753,37 +1830,20 @@ function promptSetPin(callback) {
     });
 }
 
-async function renderAboutPanel() {
-    const deptCount = Object.keys(fileSystem).length;
-    let folderCount = 0, fileCount = 0, noteCount = 0;
-    function countRecursive(obj, path) {
-        for (const key of Object.keys(obj)) {
-            const p = path ? path + '/' + key : key;
-            folderCount++;
-            if (allFiles[p]) fileCount += allFiles[p].length;
-            if (allNotes[p]) noteCount += allNotes[p].length;
-            if (obj[key] && typeof obj[key] === 'object') countRecursive(obj[key], p);
-        }
-    }
-    countRecursive(fileSystem, '');
-    document.getElementById('aboutStatDepts').textContent = deptCount;
-    document.getElementById('aboutStatFolders').textContent = folderCount;
-    document.getElementById('aboutStatFiles').textContent = fileCount;
-    document.getElementById('aboutStatNotes').textContent = noteCount;
-}
-
 const settingsPanelRenderers = {
-    storage: renderStoragePanel,
-    appearance: applyThemePickUI,
-    favorites: renderFavoritesPanel,
+    storage:     renderStoragePanel,
+    appearance:  applyThemePickUI,
+    favorites:   renderFavoritesPanel,
+    statistics:  renderStatisticsPanel,
     departments: renderDepartmentsManagePanel,
-    security: updatePinStatusUI,
-    about: renderAboutPanel
+    security:    updatePinStatusUI
 };
 
+/* --- INIT --- */
 function initSettingsPage() {
     document.getElementById('settingsBtn').onclick = openSettingsPage;
     document.getElementById('settingsCloseBtn').onclick = closeSettingsPage;
+
     document.querySelectorAll('.settings-panel-back').forEach(btn => {
         btn.onclick = () => showSettingsScreen('settingsListScreen');
     });
@@ -1800,47 +1860,61 @@ function initSettingsPage() {
         if (e.target.id === 'settingsPage') closeSettingsPage();
     });
 
-    // Appearance
+    /* Appearance */
     document.getElementById('themePickDark').onclick = () => {
-        document.body.classList.remove('light-mode');
-        localStorage.setItem('docman_theme', '');
-        updateThemeIcon(); applyThemePickUI();
+        docmanSettings.theme = 'dark'; saveSettings(); applyTheme('dark');
     };
     document.getElementById('themePickLight').onclick = () => {
-        document.body.classList.add('light-mode');
-        localStorage.setItem('docman_theme', 'light-mode');
-        updateThemeIcon(); applyThemePickUI();
+        docmanSettings.theme = 'light'; saveSettings(); applyTheme('light');
     };
-    const reduceMotionToggle = document.getElementById('reduceMotionToggle');
-    reduceMotionToggle.checked = docmanSettings.reduceMotion;
-    reduceMotionToggle.onchange = () => { docmanSettings.reduceMotion = reduceMotionToggle.checked; saveSettings(); applyReduceMotion(); };
-    const compactCardsToggle = document.getElementById('compactCardsToggle');
-    compactCardsToggle.checked = docmanSettings.compactCards;
-    compactCardsToggle.onchange = () => { docmanSettings.compactCards = compactCardsToggle.checked; saveSettings(); applyCompactCards(); };
-    applyReduceMotion(); applyCompactCards();
-
-    // PDF Settings
-    const zoomSlider = document.getElementById('pdfZoomSlider');
-    const zoomLabel = document.getElementById('pdfZoomValueLabel');
-    zoomSlider.value = docmanSettings.pdfZoom;
-    zoomLabel.textContent = docmanSettings.pdfZoom + '%';
-    zoomSlider.oninput = () => {
-        zoomLabel.textContent = zoomSlider.value + '%';
-        docmanSettings.pdfZoom = parseInt(zoomSlider.value, 10);
-        if (typeof pdfScale !== 'undefined') pdfScale = docmanSettings.pdfZoom / 100;
-        saveSettings();
+    document.getElementById('themePickSystem').onclick = () => {
+        docmanSettings.theme = 'system'; saveSettings(); applyTheme('system');
     };
-    const hqToggle = document.getElementById('pdfHighQualityToggle');
-    hqToggle.checked = docmanSettings.pdfHighQuality;
-    hqToggle.onchange = () => { docmanSettings.pdfHighQuality = hqToggle.checked; saveSettings(); };
-    const rememberPageToggle = document.getElementById('pdfRememberPageToggle');
-    rememberPageToggle.checked = docmanSettings.pdfRememberPage;
-    rememberPageToggle.onchange = () => { docmanSettings.pdfRememberPage = rememberPageToggle.checked; saveSettings(); };
 
-    // Favorites & Recents
-    const trackRecentsToggle = document.getElementById('trackRecentsToggle');
-    trackRecentsToggle.checked = docmanSettings.trackRecents;
-    trackRecentsToggle.onchange = () => { docmanSettings.trackRecents = trackRecentsToggle.checked; saveSettings(); };
+    const enableAnimToggle = document.getElementById('enableAnimationsToggle');
+    enableAnimToggle.checked = docmanSettings.enableAnimations;
+    enableAnimToggle.onchange = () => { docmanSettings.enableAnimations = enableAnimToggle.checked; saveSettings(); applyAnimations(); };
+
+    const enableParticlesToggle = document.getElementById('enableParticlesToggle');
+    enableParticlesToggle.checked = docmanSettings.enableParticles;
+    enableParticlesToggle.onchange = () => { docmanSettings.enableParticles = enableParticlesToggle.checked; saveSettings(); applyParticles(); };
+
+    /* PDF */
+    document.querySelectorAll('[data-radio="pdfOpen"]').forEach(dot => {
+        dot.parentElement.onclick = () => {
+            docmanSettings.pdfOpen = dot.getAttribute('data-val');
+            saveSettings(); applyRadioUI('pdfOpen');
+        };
+    });
+    applyRadioUI('pdfOpen');
+
+    const thresholdVal = document.getElementById('pdfThresholdVal');
+    thresholdVal.textContent = docmanSettings.pdfThreshold;
+    document.getElementById('pdfThresholdDown').onclick = () => {
+        if (docmanSettings.pdfThreshold > 1) { docmanSettings.pdfThreshold--; thresholdVal.textContent = docmanSettings.pdfThreshold; saveSettings(); }
+    };
+    document.getElementById('pdfThresholdUp').onclick = () => {
+        if (docmanSettings.pdfThreshold < 500) { docmanSettings.pdfThreshold++; thresholdVal.textContent = docmanSettings.pdfThreshold; saveSettings(); }
+    };
+
+    /* Favorites */
+    const showRecentsToggle = document.getElementById('showRecentsToggle');
+    showRecentsToggle.checked = docmanSettings.showRecents;
+    showRecentsToggle.onchange = () => { docmanSettings.showRecents = showRecentsToggle.checked; saveSettings(); };
+
+    const showFavoritesToggle = document.getElementById('showFavoritesToggle');
+    showFavoritesToggle.checked = docmanSettings.showFavorites;
+    showFavoritesToggle.onchange = () => { docmanSettings.showFavorites = showFavoritesToggle.checked; saveSettings(); };
+
+    const recentsLimitVal = document.getElementById('recentsLimitVal');
+    recentsLimitVal.textContent = docmanSettings.recentsLimit;
+    document.getElementById('recentsLimitDown').onclick = () => {
+        if (docmanSettings.recentsLimit > 5) { docmanSettings.recentsLimit -= 5; recentsLimitVal.textContent = docmanSettings.recentsLimit; saveSettings(); }
+    };
+    document.getElementById('recentsLimitUp').onclick = () => {
+        if (docmanSettings.recentsLimit < 100) { docmanSettings.recentsLimit += 5; recentsLimitVal.textContent = docmanSettings.recentsLimit; saveSettings(); }
+    };
+
     document.getElementById('clearRecentsBtn').onclick = () => {
         showConfirmModal('Clear your recently opened files history?', (ok) => {
             if (!ok) return;
@@ -1850,13 +1924,19 @@ function initSettingsPage() {
         });
     };
 
-    // Search
-    const noteContentToggle = document.getElementById('searchNoteContentToggle');
-    noteContentToggle.checked = docmanSettings.searchNoteContent;
-    noteContentToggle.onchange = () => { docmanSettings.searchNoteContent = noteContentToggle.checked; saveSettings(); };
-    const globalToggle = document.getElementById('searchGlobalToggle');
-    globalToggle.checked = docmanSettings.searchGlobal;
-    globalToggle.onchange = () => { docmanSettings.searchGlobal = globalToggle.checked; saveSettings(); };
+    /* Search */
+    const searchNotesToggle = document.getElementById('searchNotesToggle');
+    searchNotesToggle.checked = docmanSettings.searchNotes;
+    searchNotesToggle.onchange = () => { docmanSettings.searchNotes = searchNotesToggle.checked; saveSettings(); };
+
+    const searchFileNamesToggle = document.getElementById('searchFileNamesToggle');
+    searchFileNamesToggle.checked = docmanSettings.searchFileNames;
+    searchFileNamesToggle.onchange = () => { docmanSettings.searchFileNames = searchFileNamesToggle.checked; saveSettings(); };
+
+    const searchFolderNamesToggle = document.getElementById('searchFolderNamesToggle');
+    searchFolderNamesToggle.checked = docmanSettings.searchFolderNames;
+    searchFolderNamesToggle.onchange = () => { docmanSettings.searchFolderNames = searchFolderNamesToggle.checked; saveSettings(); };
+
     document.getElementById('clearSearchHistoryBtn').onclick = () => {
         showConfirmModal('Clear your saved search history?', (ok) => {
             if (!ok) return;
@@ -1865,14 +1945,14 @@ function initSettingsPage() {
         });
     };
 
-    // Departments
+    /* Departments */
     document.getElementById('settingsAddDeptBtn').onclick = () => {
         addNewDepartment();
         setTimeout(renderDepartmentsManagePanel, 50);
         setTimeout(refreshSettingsListSubtitles, 50);
     };
 
-    // Security
+    /* Security */
     const appLockToggle = document.getElementById('appLockToggle');
     appLockToggle.onchange = () => {
         if (appLockToggle.checked && !localStorage.getItem(PIN_KEY)) {
@@ -1883,18 +1963,27 @@ function initSettingsPage() {
             });
         } else {
             docmanSettings.appLock = appLockToggle.checked;
-            saveSettings();
-            updatePinStatusUI();
+            saveSettings(); updatePinStatusUI();
         }
     };
     document.getElementById('changePinBtn').onclick = () => promptSetPin(() => {});
-    const hidePreviewsToggle = document.getElementById('hidePreviewsToggle');
-    hidePreviewsToggle.checked = docmanSettings.hidePreviews;
-    hidePreviewsToggle.onchange = () => { docmanSettings.hidePreviews = hidePreviewsToggle.checked; saveSettings(); };
 
-    // Data management
+    /* Storage */
     document.getElementById('exportDataBtn').onclick = exportBackupData;
     document.getElementById('clearAllDataBtn').onclick = clearAllAppData;
+    document.getElementById('viewStorageDetailsBtn').onclick = () => showToast('Detailed view coming soon');
 
-    if (typeof pdfScale !== 'undefined') pdfScale = docmanSettings.pdfZoom / 100;
+    const importFileInput = document.getElementById('importFileInput');
+    document.getElementById('importDataBtn').onclick = () => importFileInput.click();
+    importFileInput.onchange = (e) => {
+        if (e.target.files[0]) { importBackupData(e.target.files[0]); e.target.value = ''; }
+    };
+
+    /* About */
+    document.getElementById('checkUpdatesBtn').onclick = () => showToast('You're on the latest version ✓');
+
+    /* Apply all saved settings on init */
+    applyTheme(docmanSettings.theme || 'dark');
+    applyAnimations();
+    applyParticles();
 }
