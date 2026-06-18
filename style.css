@@ -157,26 +157,19 @@ body::before {
 .header {
     display: flex;
     align-items: center;
-    gap: 24px;
-
-    min-height: 140px;
-
+    gap: 10px;
     overflow: hidden;
     margin-bottom: 24px;
-
-    padding: 22px 32px;
-
+    padding: 12px 24px;
     background: var(--glass-bg);
     backdrop-filter: blur(20px);
-
     border-radius: var(--radius-xl);
     border: none;
-
     position: relative;
     z-index: 1;
-
     transition: all var(--transition-base);
 }
+
 .header::before {
     content: '';
     position: absolute;
@@ -234,8 +227,8 @@ body::before {
 }
 
 .logo {
-    width: 90px;
-    height: 90px;
+    width: 72px;
+    height: 72px;
 }
 .logo-inner {
     width: 100%;
@@ -258,10 +251,10 @@ body::before {
 @keyframes ringPulse { 0%,100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.02); } }
 
 .header-title h1 {
-     font-size: 4rem;
+    font-size: 2.8rem;
     font-weight: 900;
     letter-spacing: 3px;
-    line-height: 0.95;
+    line-height: 1;
 
     background: linear-gradient(
         90deg,
