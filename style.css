@@ -160,7 +160,20 @@ body::before {
     gap: 10px;
     margin-bottom: 24px;
     padding: 12px 24px;
-    background: var(--glass-bg);
+    background:
+    radial-gradient(
+        circle at 25% 50%,
+        rgba(37,99,235,.22),
+        transparent 45%
+    ),
+    linear-gradient(
+        135deg,
+        rgba(6,10,35,.95),
+        rgba(4,8,28,.98)
+    );
+    
+    
+    
     backdrop-filter: blur(20px);
     border-radius: var(--radius-xl);
     border: none;
