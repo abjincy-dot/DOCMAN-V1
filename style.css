@@ -221,6 +221,7 @@ body::before {
 
 .logo {
     position: relative;
+    top: 10px;      /* adjust value */
     width: 45px;
     height: 45px;
     flex-shrink: 0;
