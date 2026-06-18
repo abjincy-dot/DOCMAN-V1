@@ -238,6 +238,7 @@ function closeImageViewer() {
 }
 
 function openFile(dataUrl, fileName) {
+    trackRecentFile(fileName, dataUrl);
     const fileType = getFileType(fileName);
     if (fileType === 'image') {
         openImageViewer(dataUrl, fileName);
@@ -1445,6 +1446,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
     document.getElementById('homeBtn').addEventListener('click', goHome);
     document.getElementById('uploadBtn').addEventListener('click', triggerUpload);
+    initSettingsPage();
     await initDB();
     await loadFromIndexedDB();
     attachPressEffects();
@@ -1512,4 +1514,387 @@ function closeDeptInfo() {
     const modal = document.getElementById('deptInfoModal');
     modal.classList.remove('show');
     setTimeout(() => { modal.style.display = 'none'; }, 80);
+}
+
+/* ============================================
+   SETTINGS PAGE
+   ============================================ */
+const SETTINGS_KEY = 'docman_settings_v1';
+const RECENTS_KEY = 'docman_recents_v1';
+const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
+const PIN_KEY = 'docman_pin_v1';
+
+const defaultSettings = {
+    reduceMotion: false,
+    compactCards: false,
+    pdfZoom: 100,
+    pdfHighQuality: true,
+    pdfRememberPage: true,
+    trackRecents: true,
+    searchNoteContent: true,
+    searchGlobal: true,
+    appLock: false,
+    hidePreviews: false
+};
+
+function loadSettings() {
+    try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        return raw ? { ...defaultSettings, ...JSON.parse(raw) } : { ...defaultSettings };
+    } catch (e) { return { ...defaultSettings }; }
+}
+function saveSettings() {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(docmanSettings));
+}
+let docmanSettings = loadSettings();
+
+function loadRecents() {
+    try { return JSON.parse(localStorage.getItem(RECENTS_KEY)) || []; }
+    catch (e) { return []; }
+}
+function saveRecents(list) {
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 20)));
+}
+function trackRecentFile(fileName) {
+    if (!docmanSettings.trackRecents) return;
+    let list = loadRecents();
+    list = list.filter(r => r.name !== fileName);
+    list.unshift({ name: fileName, time: Date.now() });
+    saveRecents(list);
+}
+
+function openSettingsPage() {
+    const page = document.getElementById('settingsPage');
+    page.classList.remove('hidden');
+    requestAnimationFrame(() => page.classList.add('settings-page-visible'));
+    showSettingsScreen('settingsListScreen');
+    refreshSettingsListSubtitles();
+}
+function closeSettingsPage() {
+    const page = document.getElementById('settingsPage');
+    page.classList.remove('settings-page-visible');
+    setTimeout(() => page.classList.add('hidden'), 280);
+}
+function showSettingsScreen(screenId) {
+    document.querySelectorAll('.settings-screen').forEach(s => s.classList.remove('settings-screen-active'));
+    const target = document.getElementById(screenId);
+    if (target) target.classList.add('settings-screen-active');
+    const inner = document.querySelector('.settings-page-inner');
+    if (inner) inner.scrollTop = 0;
+}
+
+function refreshSettingsListSubtitles() {
+    const deptCount = Object.keys(fileSystem).length;
+    const deptSub = document.getElementById('settingsDeptSub');
+    if (deptSub) deptSub.textContent = `${deptCount} department${deptCount === 1 ? '' : 's'}`;
+    updateStorageSummary();
+}
+
+async function updateStorageSummary() {
+    const sub = document.getElementById('settingsStorageSub');
+    try {
+        if (navigator.storage && navigator.storage.estimate) {
+            const est = await navigator.storage.estimate();
+            const usedMB = (est.usage / (1024 * 1024)).toFixed(1);
+            if (sub) sub.textContent = `${usedMB} MB used`;
+        } else if (sub) sub.textContent = 'Tap to view';
+    } catch (e) { if (sub) sub.textContent = 'Tap to view'; }
+}
+
+async function renderStoragePanel() {
+    let fileBytes = 0, noteBytes = 0;
+    for (const path in allFiles) (allFiles[path] || []).forEach(f => { fileBytes += (f.dataUrl ? f.dataUrl.length * 0.75 : 0); });
+    for (const path in allNotes) (allNotes[path] || []).forEach(n => { noteBytes += ((n.title || '').length + (n.content || '').length) * 2; });
+    const totalBytes = fileBytes + noteBytes;
+
+    let usage = totalBytes, quota = null;
+    try {
+        if (navigator.storage && navigator.storage.estimate) {
+            const est = await navigator.storage.estimate();
+            usage = est.usage || totalBytes;
+            quota = est.quota || null;
+        }
+    } catch (e) {}
+
+    const fmtMB = (b) => (b / (1024 * 1024)).toFixed(2) + ' MB';
+    document.getElementById('storageUsedVal').textContent = fmtMB(usage);
+    document.getElementById('storageQuotaVal').textContent = quota ? fmtMB(quota) : 'device storage';
+    const pct = quota ? Math.min(100, Math.round((usage / quota) * 100)) : Math.min(100, Math.round((usage / (200 * 1024 * 1024)) * 100));
+    document.getElementById('storageUsedPct').textContent = pct + '%';
+    document.getElementById('storageAvailVal').textContent = quota ? `${fmtMB(quota - usage)} available` : '';
+
+    const ring = document.getElementById('storageRingFg');
+    const circumference = 2 * Math.PI * 52;
+    ring.style.strokeDasharray = circumference;
+    ring.style.strokeDashoffset = circumference - (circumference * pct / 100);
+
+    const breakdown = document.getElementById('storageBreakdown');
+    const rows = [
+        { label: 'Files (PDFs & Images)', val: fileBytes, color: '#3b82f6' },
+        { label: 'Notes', val: noteBytes, color: '#fbbf24' }
+    ];
+    const maxVal = Math.max(1, ...rows.map(r => r.val));
+    breakdown.innerHTML = rows.map(r => `
+        <div class="storage-breakdown-row">
+            <div class="storage-breakdown-dot" style="background:${r.color}"></div>
+            <div class="storage-breakdown-label">${r.label}</div>
+            <div class="storage-breakdown-val">${fmtMB(r.val)}</div>
+        </div>
+    `).join('');
+}
+
+function exportBackupData() {
+    const backup = { fileSystem, allFiles, allNotes, deptColors, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `docman-backup-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Backup exported');
+}
+
+function clearAllAppData() {
+    showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
+        if (!confirmed) return;
+        fileSystem = {}; allFiles = {}; allNotes = {}; deptColors = {};
+        await saveFolderStructure();
+        const tx = db.transaction(['files', 'notes'], 'readwrite');
+        tx.objectStore('files').clear();
+        tx.objectStore('notes').clear();
+        tx.commit();
+        currentPath = [];
+        closeSettingsPage();
+        render();
+        showToast('All data erased');
+    });
+}
+
+function applyThemePickUI() {
+    const isLight = document.body.classList.contains('light-mode');
+    document.getElementById('themePickDark')?.classList.toggle('active', !isLight);
+    document.getElementById('themePickLight')?.classList.toggle('active', isLight);
+}
+
+function applyReduceMotion() {
+    document.body.classList.toggle('reduce-motion', docmanSettings.reduceMotion);
+}
+function applyCompactCards() {
+    document.body.classList.toggle('compact-cards', docmanSettings.compactCards);
+}
+
+function renderFavoritesPanel() {
+    const list = loadRecents();
+    document.getElementById('recentsCount').textContent = list.length;
+    const card = document.getElementById('recentsListCard');
+    if (!list.length) { card.innerHTML = '<div class="settings-empty-row">No recent files yet</div>'; return; }
+    card.innerHTML = list.slice(0, 10).map(r => `
+        <div class="dept-manage-row">
+            <div class="settings-item-icon settings-icon-favorites" style="width:32px;height:32px;font-size:0.8rem;"><i class="fas fa-file"></i></div>
+            <div class="dept-manage-name" style="font-weight:600;font-size:0.82rem;">${escapeHtml(r.name)}</div>
+            <span class="dept-manage-count">${new Date(r.time).toLocaleDateString()}</span>
+        </div>
+    `).join('');
+}
+
+function renderDepartmentsManagePanel() {
+    const list = document.getElementById('deptManageList');
+    const depts = Object.keys(fileSystem);
+    document.getElementById('deptManageCount').textContent = depts.length;
+    if (!depts.length) { list.innerHTML = '<div class="settings-empty-row">No departments yet</div>'; return; }
+    list.innerHTML = depts.map(dept => {
+        const total = countDepartmentFiles(fileSystem[dept], [dept]);
+        return `
+        <div class="dept-manage-row">
+            <div class="dept-manage-dot"${deptColors[dept] ? ` style="background:${deptColors[dept]}"` : ''}></div>
+            <div class="dept-manage-name">${escapeHtml(dept)}</div>
+            <span class="dept-manage-count">${total} items</span>
+            <button class="dept-manage-delete" data-dept-del="${escapeHtml(dept)}"><i class="fas fa-trash"></i></button>
+        </div>`;
+    }).join('');
+    list.querySelectorAll('[data-dept-del]').forEach(btn => {
+        btn.onclick = () => {
+            const dept = btn.getAttribute('data-dept-del');
+            showConfirmModal(`Delete department "<b>${escapeHtml(dept)}</b>" and everything inside it?`, async (confirmed) => {
+                if (!confirmed) return;
+                delete fileSystem[dept];
+                delete deptColors[dept];
+                await saveFolderStructure();
+                await saveDeptColors();
+                renderDepartmentsManagePanel();
+                refreshSettingsListSubtitles();
+                if (currentPath[0] === dept) { currentPath = []; }
+                render();
+                showToast(`Department "${dept}" deleted`);
+            });
+        };
+    });
+}
+
+function updatePinStatusUI() {
+    const hasPin = !!localStorage.getItem(PIN_KEY);
+    const sub = document.getElementById('pinStatusSub');
+    const changeCard = document.getElementById('changePinCard');
+    const lockToggle = document.getElementById('appLockToggle');
+    if (sub) sub.textContent = hasPin ? 'PIN is set' : 'Not set';
+    if (changeCard) changeCard.classList.toggle('hidden', !docmanSettings.appLock);
+    if (lockToggle) lockToggle.checked = docmanSettings.appLock;
+}
+
+function promptSetPin(callback) {
+    showPromptModal('Set a 4-digit PIN:', '', (val) => {
+        if (val === null) { callback(false); return; }
+        const pin = val.trim();
+        if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true); callback(false); return; }
+        localStorage.setItem(PIN_KEY, pin);
+        showToast('PIN saved');
+        callback(true);
+    });
+}
+
+async function renderAboutPanel() {
+    const deptCount = Object.keys(fileSystem).length;
+    let folderCount = 0, fileCount = 0, noteCount = 0;
+    function countRecursive(obj, path) {
+        for (const key of Object.keys(obj)) {
+            const p = path ? path + '/' + key : key;
+            folderCount++;
+            if (allFiles[p]) fileCount += allFiles[p].length;
+            if (allNotes[p]) noteCount += allNotes[p].length;
+            if (obj[key] && typeof obj[key] === 'object') countRecursive(obj[key], p);
+        }
+    }
+    countRecursive(fileSystem, '');
+    document.getElementById('aboutStatDepts').textContent = deptCount;
+    document.getElementById('aboutStatFolders').textContent = folderCount;
+    document.getElementById('aboutStatFiles').textContent = fileCount;
+    document.getElementById('aboutStatNotes').textContent = noteCount;
+}
+
+const settingsPanelRenderers = {
+    storage: renderStoragePanel,
+    appearance: applyThemePickUI,
+    favorites: renderFavoritesPanel,
+    departments: renderDepartmentsManagePanel,
+    security: updatePinStatusUI,
+    about: renderAboutPanel
+};
+
+function initSettingsPage() {
+    document.getElementById('settingsBtn').onclick = openSettingsPage;
+    document.getElementById('settingsCloseBtn').onclick = closeSettingsPage;
+    document.querySelectorAll('.settings-panel-back').forEach(btn => {
+        btn.onclick = () => showSettingsScreen('settingsListScreen');
+    });
+
+    document.querySelectorAll('.settings-item[data-panel]').forEach(item => {
+        item.onclick = () => {
+            const panel = item.getAttribute('data-panel');
+            showSettingsScreen('settingsPanel-' + panel);
+            if (settingsPanelRenderers[panel]) settingsPanelRenderers[panel]();
+        };
+    });
+
+    document.getElementById('settingsPage').addEventListener('click', (e) => {
+        if (e.target.id === 'settingsPage') closeSettingsPage();
+    });
+
+    // Appearance
+    document.getElementById('themePickDark').onclick = () => {
+        document.body.classList.remove('light-mode');
+        localStorage.setItem('docman_theme', '');
+        updateThemeIcon(); applyThemePickUI();
+    };
+    document.getElementById('themePickLight').onclick = () => {
+        document.body.classList.add('light-mode');
+        localStorage.setItem('docman_theme', 'light-mode');
+        updateThemeIcon(); applyThemePickUI();
+    };
+    const reduceMotionToggle = document.getElementById('reduceMotionToggle');
+    reduceMotionToggle.checked = docmanSettings.reduceMotion;
+    reduceMotionToggle.onchange = () => { docmanSettings.reduceMotion = reduceMotionToggle.checked; saveSettings(); applyReduceMotion(); };
+    const compactCardsToggle = document.getElementById('compactCardsToggle');
+    compactCardsToggle.checked = docmanSettings.compactCards;
+    compactCardsToggle.onchange = () => { docmanSettings.compactCards = compactCardsToggle.checked; saveSettings(); applyCompactCards(); };
+    applyReduceMotion(); applyCompactCards();
+
+    // PDF Settings
+    const zoomSlider = document.getElementById('pdfZoomSlider');
+    const zoomLabel = document.getElementById('pdfZoomValueLabel');
+    zoomSlider.value = docmanSettings.pdfZoom;
+    zoomLabel.textContent = docmanSettings.pdfZoom + '%';
+    zoomSlider.oninput = () => {
+        zoomLabel.textContent = zoomSlider.value + '%';
+        docmanSettings.pdfZoom = parseInt(zoomSlider.value, 10);
+        if (typeof pdfScale !== 'undefined') pdfScale = docmanSettings.pdfZoom / 100;
+        saveSettings();
+    };
+    const hqToggle = document.getElementById('pdfHighQualityToggle');
+    hqToggle.checked = docmanSettings.pdfHighQuality;
+    hqToggle.onchange = () => { docmanSettings.pdfHighQuality = hqToggle.checked; saveSettings(); };
+    const rememberPageToggle = document.getElementById('pdfRememberPageToggle');
+    rememberPageToggle.checked = docmanSettings.pdfRememberPage;
+    rememberPageToggle.onchange = () => { docmanSettings.pdfRememberPage = rememberPageToggle.checked; saveSettings(); };
+
+    // Favorites & Recents
+    const trackRecentsToggle = document.getElementById('trackRecentsToggle');
+    trackRecentsToggle.checked = docmanSettings.trackRecents;
+    trackRecentsToggle.onchange = () => { docmanSettings.trackRecents = trackRecentsToggle.checked; saveSettings(); };
+    document.getElementById('clearRecentsBtn').onclick = () => {
+        showConfirmModal('Clear your recently opened files history?', (ok) => {
+            if (!ok) return;
+            saveRecents([]);
+            renderFavoritesPanel();
+            showToast('Recents cleared');
+        });
+    };
+
+    // Search
+    const noteContentToggle = document.getElementById('searchNoteContentToggle');
+    noteContentToggle.checked = docmanSettings.searchNoteContent;
+    noteContentToggle.onchange = () => { docmanSettings.searchNoteContent = noteContentToggle.checked; saveSettings(); };
+    const globalToggle = document.getElementById('searchGlobalToggle');
+    globalToggle.checked = docmanSettings.searchGlobal;
+    globalToggle.onchange = () => { docmanSettings.searchGlobal = globalToggle.checked; saveSettings(); };
+    document.getElementById('clearSearchHistoryBtn').onclick = () => {
+        showConfirmModal('Clear your saved search history?', (ok) => {
+            if (!ok) return;
+            localStorage.removeItem(SEARCH_HISTORY_KEY);
+            showToast('Search history cleared');
+        });
+    };
+
+    // Departments
+    document.getElementById('settingsAddDeptBtn').onclick = () => {
+        addNewDepartment();
+        setTimeout(renderDepartmentsManagePanel, 50);
+        setTimeout(refreshSettingsListSubtitles, 50);
+    };
+
+    // Security
+    const appLockToggle = document.getElementById('appLockToggle');
+    appLockToggle.onchange = () => {
+        if (appLockToggle.checked && !localStorage.getItem(PIN_KEY)) {
+            promptSetPin((success) => {
+                if (success) { docmanSettings.appLock = true; saveSettings(); }
+                else { appLockToggle.checked = false; }
+                updatePinStatusUI();
+            });
+        } else {
+            docmanSettings.appLock = appLockToggle.checked;
+            saveSettings();
+            updatePinStatusUI();
+        }
+    };
+    document.getElementById('changePinBtn').onclick = () => promptSetPin(() => {});
+    const hidePreviewsToggle = document.getElementById('hidePreviewsToggle');
+    hidePreviewsToggle.checked = docmanSettings.hidePreviews;
+    hidePreviewsToggle.onchange = () => { docmanSettings.hidePreviews = hidePreviewsToggle.checked; saveSettings(); };
+
+    // Data management
+    document.getElementById('exportDataBtn').onclick = exportBackupData;
+    document.getElementById('clearAllDataBtn').onclick = clearAllAppData;
+
+    if (typeof pdfScale !== 'undefined') pdfScale = docmanSettings.pdfZoom / 100;
 }
