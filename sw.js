@@ -1,5 +1,5 @@
 
-const CACHE = 'docman-v4';
+const CACHE = 'docman-v5';
 const ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.json'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
