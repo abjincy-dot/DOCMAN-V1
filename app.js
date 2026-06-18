@@ -1,3 +1,33 @@
+const SETTINGS_KEY = 'docman_settings_v2';
+const RECENTS_KEY  = 'docman_recents_v1';
+const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
+const PIN_KEY = 'docman_pin_v1';
+
+const defaultSettings = {
+    enableAnimations: true,
+    enableParticles: true,
+    theme: 'dark',           // 'dark' | 'light' | 'system'
+    pdfOpen: 'external',     // 'external' | 'docman'
+    pdfThreshold: 20,        // MB
+    showRecents: true,
+    showFavorites: true,
+    recentsLimit: 20,
+    searchNotes: true,
+    searchFileNames: true,
+    searchFolderNames: true,
+    appLock: false
+};
+
+function loadSettings() {
+    try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        return raw ? { ...defaultSettings, ...JSON.parse(raw) } : { ...defaultSettings };
+    } catch (e) { return { ...defaultSettings }; }
+}
+function saveSettings() {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(docmanSettings));
+}
+let docmanSettings = loadSettings();
 
 const DB_NAME = 'DocmanDB';
 const DB_VERSION = 9;
@@ -1528,36 +1558,7 @@ function closeDeptInfo() {
 /* ============================================
    SETTINGS PAGE
    ============================================ */
-const SETTINGS_KEY = 'docman_settings_v2';
-const RECENTS_KEY  = 'docman_recents_v1';
-const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
-const PIN_KEY = 'docman_pin_v1';
 
-const defaultSettings = {
-    enableAnimations: true,
-    enableParticles: true,
-    theme: 'dark',           // 'dark' | 'light' | 'system'
-    pdfOpen: 'external',     // 'external' | 'docman'
-    pdfThreshold: 20,        // MB
-    showRecents: true,
-    showFavorites: true,
-    recentsLimit: 20,
-    searchNotes: true,
-    searchFileNames: true,
-    searchFolderNames: true,
-    appLock: false
-};
-
-function loadSettings() {
-    try {
-        const raw = localStorage.getItem(SETTINGS_KEY);
-        return raw ? { ...defaultSettings, ...JSON.parse(raw) } : { ...defaultSettings };
-    } catch (e) { return { ...defaultSettings }; }
-}
-function saveSettings() {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(docmanSettings));
-}
-let docmanSettings = loadSettings();
 
 function loadRecents() {
     try { return JSON.parse(localStorage.getItem(RECENTS_KEY)) || []; }
