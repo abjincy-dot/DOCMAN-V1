@@ -246,8 +246,9 @@ body::before {
 @keyframes ringPulse { 0%,100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.02); } }
 
 .header-title h1 {
-    font-size: 1.35rem;
-    font-weight: 800;
+    font-size: 2.23rem;
+    font-weight: 900;
+    letter-spacing: 1px;
     background: linear-gradient(135deg, #fff, #bfdbfe, #a5f3fc);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
