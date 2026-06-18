@@ -156,7 +156,7 @@ body::before {
 
 .header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     margin-bottom: 24px;
     padding: 12px 24px;
@@ -171,15 +171,16 @@ body::before {
         rgba(6,10,35,.95),
         rgba(4,8,28,.98)
     );
-    
-    
-    
     backdrop-filter: blur(20px);
     border-radius: var(--radius-xl);
     border: none;
     position: relative;
     z-index: 1;
     transition: all var(--transition-base);
+}
+
+.header-settings-btn {
+    align-self: center;
 }
 
 .header::before {
