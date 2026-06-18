@@ -1360,7 +1360,7 @@ body.light-mode .theme-toggle{
     align-items: center;
     
     flex: 1;
-    min-height: 54px;
+    min-height: 62px;
     overflow: hidden;
     cursor: pointer;
     
@@ -1536,12 +1536,12 @@ body.light-mode .theme-toggle{
 
 .dept-pill-center-icon {
     flex-shrink: 0;
-    width: 36px;
+    width: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative; z-index: 2;
-    padding-left: 10px;
+    padding-left: 16px;
 }
 .dept-pill-center-icon i {
     font-size: 1.15rem;
