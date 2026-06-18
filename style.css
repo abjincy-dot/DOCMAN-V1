@@ -4715,15 +4715,6 @@ body.light-mode .header-settings-btn {
   background: linear-gradient(135deg, #1e293b 50%, #e2e8f0 50%);
   color: #8b5cf6;
 }
-.header {
-    position: relative;
-    overflow: hidden;
-}
 
-.header-settings-btn {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-}
 
 
