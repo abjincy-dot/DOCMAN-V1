@@ -157,18 +157,26 @@ body::before {
 .header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 24px;
+
+    min-height: 140px;
+
+    overflow: hidden;
     margin-bottom: 24px;
-    padding: 12px 24px;
+
+    padding: 22px 32px;
+
     background: var(--glass-bg);
     backdrop-filter: blur(20px);
+
     border-radius: var(--radius-xl);
     border: none;
+
     position: relative;
     z-index: 1;
+
     transition: all var(--transition-base);
 }
-
 .header::before {
     content: '';
     position: absolute;
@@ -196,8 +204,28 @@ body::before {
     mask-composite: exclude;
     animation: containerGlowPulse 4s ease-in-out infinite;
     pointer-events: none;
-    z-index: -1;
+    z-index: -1; }
+
+    .header::after {
+    content: '';
+    position: absolute;
+
+    width: 280px;
+    height: 280px;
+
+    left: 80px;
+    top: -100px;
+
+    background:
+        radial-gradient(
+            circle,
+            rgba(59,130,246,.18),
+            transparent 70%
+        );
+
+    pointer-events: none;
 }
+
 
 .header:hover {
     border-color: var(--glass-border-hover);
@@ -206,12 +234,9 @@ body::before {
 }
 
 .logo {
-    position: relative;
-    width: 52px;
-    height: 52px;
-    flex-shrink: 0;
+    width: 90px;
+    height: 90px;
 }
-
 .logo-inner {
     width: 100%;
     height: 100%;
@@ -233,11 +258,29 @@ body::before {
 @keyframes ringPulse { 0%,100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.02); } }
 
 .header-title h1 {
-    font-size: 1.35rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #fff, #bfdbfe, #a5f3fc);
+     font-size: 4rem;
+    font-weight: 900;
+    letter-spacing: 3px;
+    line-height: 0.95;
+
+    background: linear-gradient(
+        90deg,
+        #ffffff 0%,
+        #dbeafe 40%,
+        #60a5fa 100%
+    );
+
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+
+    text-shadow:
+        0 0 15px rgba(96,165,250,.35);
+}
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+
+    text-shadow:
+        0 0 20px rgba(96,165,250,.25);
 }
 
 body.light-mode .header-title h1 {
@@ -247,17 +290,28 @@ body.light-mode .header-title h1 {
 }
 
 .doc-tag {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #06b6d4;
-    background: rgba(6,182,212,0.12);
-    padding: 4px 10px;
-    border-radius: var(--radius-full);
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-}
+    gap: 8px;
 
+    padding: 8px 16px;
+
+    font-size: 0.78rem;
+    font-weight: 700;
+
+    color: #7dd3fc;
+
+    background: rgba(59,130,246,.12);
+
+    border: 1px solid rgba(125,211,252,.25);
+
+    border-radius: 999px;
+
+    backdrop-filter: blur(12px);
+
+    box-shadow:
+        0 0 12px rgba(59,130,246,.15);
+}
 .owner-name {
     display: flex;
     align-items: center;
