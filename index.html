@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<title>DOCMAN | Document Manager</title>
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DOCMAN">
+<meta name="theme-color" content="#0e0e0e">
+<!-- iOS Icons -->
+<link rel="apple-touch-icon" href="icons/icon-180x180.png">
+<link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120x120.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167x167.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180x180.png">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=36">
+</head>
+<body style="background:#0e0e0e !important;">
+
+<!-- SPLASH SCREEN -->
+<div id="splashScreen">
+  <div style="position: absolute; inset: 0; overflow: hidden; z-index: 0;">
+    <div style="position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, rgba(99,102,241,0.3), transparent); border-radius: 50%; top: -10%; left: -5%; animation: splashFloat1 6s ease-in-out infinite;"></div>
+    <div style="position: absolute; width: 250px; height: 250px; background: radial-gradient(circle, rgba(139,92,246,0.25), transparent); border-radius: 50%; bottom: 5%; right: -10%; animation: splashFloat2 8s ease-in-out infinite;"></div>
+  </div>
+  <div class="splash-container">
+    <div class="splash-icon-wrapper">
+      <div class="splash-icon">📁</div>
+    </div>
+    <div class="splash-title">DOCMAN</div>
+    <div class="splash-sub">DOCUMENT MANAGER</div>
+    <div class="splash-loader">
+      <div class="splash-loader-bar"></div>
+    </div>
+  </div>
+  <style>
+    @keyframes splashFloat1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(20px,-30px) scale(1.1); } }
+    @keyframes splashFloat2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-30px,20px) scale(1.08); } }
+  </style>
+</div>
+
+<div class="particles-container">
+  <div class="particle"></div><div class="particle"></div><div class="particle"></div><div class="particle"></div>
+  <div class="particle"></div><div class="particle"></div><div class="particle"></div><div class="particle"></div>
+  <div class="particle"></div><div class="particle"></div><div class="particle"></div><div class="particle"></div>
+</div>
+<div class="ambient-glow glow-1"></div>
+<div class="ambient-glow glow-2"></div>
+
+<div class="app">
+  <header class="header">
+    <div class="logo"><div class="logo-inner"><i class="fas fa-folder-open"></i></div><div class="logo-ring"></div></div>
+    <div class="header-title">
+      <div class="main-line"><h1>DOCMAN</h1><span class="doc-tag"><i class="fas fa-shield-alt"></i> Document Manager</span></div>
+      <div class="owner-name"><span class="owner-dot"></span><span>𝓐𝒷𝒾𝓈𝒽 ℛ𝒶𝒿𝒶𝓃</span></div>
+    </div>
+    <!-- ========== NEW 3D TRAY ILLUSTRATION ========== -->
+    <div class="header-illustration">
+      <div class="new-tray-scene">
+        <div class="new-tray-stars">
+          <div class="new-tray-star star-1"></div>
+          <div class="new-tray-star star-2"></div>
+          <div class="new-tray-star star-3"></div>
+          <div class="new-tray-star star-4"></div>
+          <div class="new-tray-star star-5"></div>
+          <div class="new-tray-star star-6"></div>
+          <div class="new-tray-star star-7"></div>
+          <div class="new-tray-star star-8"></div>
+          <div class="new-tray-star star-9"></div>
+          <div class="new-tray-star star-10"></div>
+        </div>
+        <div class="new-tray-orbit orbit-1"></div>
+        <div class="new-tray-orbit orbit-2"></div>
+        <div class="new-tray-container">
+          <div class="new-tray-back"></div>
+          <div class="new-tray-file file--purple"><div class="new-tray-file-content"><div class="new-tray-lines"><div class="new-tray-line line--short"></div><div class="new-tray-line line--long"></div><div class="new-tray-line line--medium"></div></div></div></div>
+          <div class="new-tray-file file--blue"><div class="new-tray-file-content"><div class="new-tray-lines"><div class="new-tray-line line--short"></div><div class="new-tray-line line--long"></div><div class="new-tray-line line--medium"></div></div></div></div>
+          <div class="new-tray-file file--cyan"><div class="new-tray-file-content"><div class="new-tray-lines"><div class="new-tray-line line--short"></div><div class="new-tray-line line--long"></div><div class="new-tray-line line--medium"></div></div></div></div>
+          <div class="new-tray-file file--pink"><div class="new-tray-file-content"><div class="new-tray-lines"><div class="new-tray-line line--short"></div><div class="new-tray-line line--long"></div><div class="new-tray-line line--medium"></div></div></div></div>
+          <div class="new-tray-file file--white"><div class="new-tray-file-content"><div class="new-tray-lines"><div class="new-tray-line line--short"></div><div class="new-tray-line line--long"></div><div class="new-tray-line line--medium"></div></div></div></div>
+          <div class="new-tray-file file--violet"><div class="new-tray-file-content"><div class="new-tray-lines"><div class="new-tray-line line--short"></div><div class="new-tray-line line--long"></div><div class="new-tray-line line--medium"></div></div></div></div>
+          <div class="new-tray-front"><div class="new-tray-front-inner"><div class="new-tray-handle"></div></div></div>
+          <div class="new-tray-rim"></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="top-bar">
+    <button id="homeBtn" class="btn-back hidden"><i class="fas fa-home"></i><span>Home</span></button>
+    <div class="type-selector">
+      <button id="pdfTabBtn" class="type-btn active"><i class="fas fa-file-pdf"></i> Files</button>
+      <button id="notesTabBtn" class="type-btn"><i class="fas fa-sticky-note"></i> Notes</button>
+    </div>
+    <div class="search-container">
+      <i class="fas fa-search"></i>
+      <input type="text" id="searchInput" placeholder="Search documents..." autocomplete="off">
+      <button id="clearSearchBtn" class="clear-search hidden"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="top-bar-actions">
+      <button id="themeToggle" class="theme-toggle"><div class="theme-icon-wrapper"><i class="fas fa-moon"></i></div></button>
+      <button id="uploadBtn" class="btn-upload"><i class="fas fa-cloud-upload-alt"></i><span>Upload</span></button>
+      <button id="newNoteBtn" class="btn-upload hidden"><i class="fas fa-plus"></i><span>New Note</span></button>
+    </div>
+    <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg" multiple>
+  </div>
+
+  <div class="stats-bar">
+    <div class="stat-item"><div class="stat-icon-bg"><i class="fas fa-folder"></i></div><div class="stat-data"><span id="folderCount" class="stat-number">0</span><label>Folders</label></div></div>
+    <div class="stat-divider"></div>
+    <div class="stat-item"><div class="stat-icon-bg stat-icon-files"><i class="fas fa-file"></i></div><div class="stat-data"><span id="fileCount" class="stat-number">0</span><label>Files</label></div></div>
+    <div class="stat-divider"></div>
+    <div class="stat-item"><div class="stat-icon-bg stat-icon-notes"><i class="fas fa-sticky-note"></i></div><div class="stat-data"><span id="notesCount" class="stat-number">0</span><label>Notes</label></div></div>
+  </div>
+
+  <nav id="breadcrumb" class="breadcrumb"></nav>
+  <div id="departmentsSection"></div>
+  <div id="searchInfo" class="search-result-info hidden"></div>
+  <div id="content" class="content"></div>
+</div>
+
+<!-- Image Viewer Modal -->
+<div id="imageViewer" class="image-viewer hidden">
+  <div class="image-viewer-header">
+    <button id="closeImageViewer" class="close-viewer-btn"><i class="fas fa-times-circle"></i> Close</button>
+  </div>
+  <div class="image-viewer-body">
+    <img id="viewerImage" src="" alt="">
+  </div>
+</div>
+
+<!-- Note Modal -->
+<div id="noteModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-body" style="padding-top:20px;">
+      <input type="text" id="noteTitle" placeholder="Note title..." style="margin-bottom:14px; font-size:1.1rem; font-weight:600; background:rgba(255,255,255,0.1); border:1.5px solid rgba(255,255,255,0.25); color:#f8fafc;" autocomplete="off">
+      <textarea id="noteContent" placeholder="Write your note here..." style="background:rgba(255,255,255,0.07); border:1.5px solid rgba(255,255,255,0.18); color:#e2e8f0;"></textarea>
+    </div>
+    <div class="modal-footer"><button onclick="closeNoteModal()">Cancel</button><button id="saveNoteBtn">Save Note</button></div>
+  </div>
+</div>
+
+<!-- Dept Info Modal -->
+<div id="deptInfoModal" onclick="if(event.target===this)closeDeptInfo()">
+  <div class="dept-info-card">
+    <button class="dept-info-close" onclick="closeDeptInfo()"><i class="fas fa-times"></i></button>
+    <div class="dept-info-header">
+      
+      <div class="dept-info-hub-icon" onclick="showInfo()">
+    <i class="fas fa-info"></i>
+</div>
+    
+      <div>
+        <div class="dept-info-title">DOCMAN</div>
+        <div class="dept-info-subtitle">DOCUMENT MANAGER</div>
+      </div>
+    </div>
+    <div class="dept-info-stats">
+      <div class="dept-info-stat">
+        <div class="stat-icon">🏢</div>
+        <div class="dept-info-stat-val" id="infoStatDepts">—</div>
+        <div class="dept-info-stat-label">Departments</div>
+      </div>
+      <div class="dept-info-stat">
+        <div class="stat-icon">📁</div>
+        <div class="dept-info-stat-val" id="infoStatFolders">—</div>
+        <div class="dept-info-stat-label">Folders</div>
+      </div>
+      <div class="dept-info-stat">
+        <div class="stat-icon">📄</div>
+        <div class="dept-info-stat-val" id="infoStatFiles">—</div>
+        <div class="dept-info-stat-label">Files</div>
+      </div>
+      <div class="dept-info-stat">
+        <div class="stat-icon">📝</div>
+        <div class="dept-info-stat-val" id="infoStatNotes">—</div>
+        <div class="dept-info-stat-label">Notes</div>
+      </div>
+    </div>
+    <div class="dept-info-version">v1.0 · Built with ❤️</div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"><div class="toast-icon"><i class="fas fa-check-circle"></i></div><span></span></div>
+<div id="loadingOverlay" class="loading-overlay hidden"><div class="loading-spinner"><div class="spinner-ring"></div><div class="spinner-ring"></div><div class="spinner-ring"></div></div><p>Loading...</p></div>
+
+<script src="app.js?v=143"></script>
+
+<script>
+  // Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW registration failed:', err));
+  }
+
+  // Splash → App smooth transition
+  let appReady = false;
+  let splashTimerDone = false;
+  function tryReveal() {
+    if (!appReady || !splashTimerDone) return;
+    const splash = document.getElementById('splashScreen');
+    const app = document.querySelector('.app');
+    if (splash) splash.classList.add('hidden');
+    setTimeout(() => { if (app) app.classList.add('app-visible'); }, 100);
+  }
+  window.addEventListener('load', () => {
+    setTimeout(() => { splashTimerDone = true; tryReveal(); }, 1800);
+  });
+  Object.defineProperty(window, 'docmanReady', {
+    set(v) { if (v) { appReady = true; tryReveal(); } },
+    get() { return appReady; }
+  });
+</script>
+</body>
+</html>
