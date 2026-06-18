@@ -207,8 +207,8 @@ body::before {
 
 .logo {
     position: relative;
-    width: 35px;
-    height: 35px;
+    width: 45px;
+    height: 45px;
     flex-shrink: 0;
 }
 
