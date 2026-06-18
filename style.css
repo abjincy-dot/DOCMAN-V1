@@ -166,7 +166,6 @@ body::before {
     border: none;
     position: relative;
     z-index: 1;
-    overflow: hidden;
     transition: all var(--transition-base);
 }
 
@@ -3194,7 +3193,7 @@ body {
   align-items: flex-end;
   justify-content: center;
   gap: 6px;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
   z-index: 2;
   padding-right: 12px;
