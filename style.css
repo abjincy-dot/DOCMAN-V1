@@ -1360,7 +1360,7 @@ body.light-mode .theme-toggle{
     align-items: center;
     
     flex: 1;
-    min-height: 62px;
+    min-height: 48px;
     overflow: hidden;
     cursor: pointer;
     
@@ -2962,7 +2962,7 @@ body {
     .dept-pill-icon { width: 58px; height: 58px; margin-left: -29px; }
     .dept-pill-name { font-size: 12px; letter-spacing: 0.8px; }
     .dept-node { width: 7px; height: 7px; }
-    .dept-oval { min-height: 50px; flex: 0 0 65%; }
+    .dept-oval { min-height: 44px; flex: 0 0 65%; }
 
     .dept-hub {
         width: 140px !important;
