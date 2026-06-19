@@ -2453,11 +2453,15 @@ body.light-mode .empty-state {
 color: #64748b !important; 
 }
 
+body.light-mode .header-subtitle,
+body.light-mode .header-badge {
+    color: #38bdf8 !important;
 
-body.light-mode .header-subtitle, 
-body.light-mode .header-badge { 
-color: #334155 !important; 
-} 
+    text-shadow:
+        0 0 4px rgba(56,189,248,.9),
+        0 0 8px rgba(56,189,248,.7);
+}
+
 body.light-mode .user-name { 
 color: #1e293b !important; 
 }
