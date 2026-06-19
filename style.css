@@ -4483,10 +4483,4 @@ border-radius: var(--radius-full);
 background: linear-gradient(135deg, #1e293b 50%, #e2e8f0 50%); 
 color: #8b5cf6; 
 }
-.logo::before {
-    display: none !important;
-}
-.header {
-    min-height: auto !important;
-    align-items: center;
-}
+
