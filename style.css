@@ -4496,15 +4496,5 @@ color: #8b5cf6;
     position: relative;
 }
 
-.note-modal::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    border: 1px solid #3b82f6;
-    box-shadow: 0 0 4px rgba(59,130,246,.6);
-    pointer-events: none;
-}
-
 
 
