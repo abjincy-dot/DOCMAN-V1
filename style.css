@@ -4497,7 +4497,19 @@ pointer-events: none;
 }
 
 .logo,
-.logo-icon,
+.logo-wrapper,
 .header-logo {
-    background: red !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    border: none !important;
+    padding: 0 !important;
+}
+
+.logo img,
+.header-logo img {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    display: block;
 }
