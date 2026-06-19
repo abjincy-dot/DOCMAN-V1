@@ -4156,7 +4156,7 @@ HEADER SETTINGS BUTTON (hot pink → navy pill)
 display: flex; 
 align-items: center; 
 gap: 7px; 
-padding: 9px 16px 9px 12px; 
+padding: 6px 14px 6px 10px;
 border: none; 
 border-radius: 9999px; 
 cursor: pointer; 
