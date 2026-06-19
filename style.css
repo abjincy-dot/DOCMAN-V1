@@ -2457,6 +2457,15 @@ body.light-mode .header-badge {
 color: #334155 !important; 
 } 
 
+.header-subtitle {
+    color: #38bdf8 !important;
+
+    text-shadow:
+        0 0 4px rgba(56,189,248,.9),
+        0 0 8px rgba(56,189,248,.7),
+        0 0 16px rgba(56,189,248,.4);
+}
+
 
 body.light-mode .user-name { 
 color: #1e293b !important; 
