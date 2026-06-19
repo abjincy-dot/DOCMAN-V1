@@ -157,21 +157,35 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
     min-height: unset;
 }
 
-.header::before { 
-content: ''; 
-position: absolute; 
-inset: 0; 
-border-radius: var(--radius-xl); 
-padding: 2px;
+.header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-xl);
+    padding: 1px;
 
-background: linear-gradient(
-    90deg,
-    #38bdf8 0%,
-    #6366f1 35%,
-    #8b5cf6 65%,
-    #ec4899 100%
-);
+    background: linear-gradient(
+        90deg,
+        #38bdf8 0%,
+        #6366f1 35%,
+        #8b5cf6 65%,
+        #ec4899 100%
+    );
 
+    -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+
+    box-shadow:
+        0 0 8px rgba(59,130,246,.6),
+        0 0 18px rgba(99,102,241,.35),
+        0 0 30px rgba(236,72,153,.22);
+
+    pointer-events: none;
+}
 -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
