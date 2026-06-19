@@ -200,16 +200,14 @@ pointer-events: none;
 .logo-inner { 
 width: 100%; 
 height: 100%; 
-background: linear-gradient(145deg, #5b9cf6 0%, #4b7ef0 30%, #6b4fdd 70%, #8b5cf6 100%); 
+background: none;
 border-radius: 14px; 
 display: flex; 
 align-items: center; 
 justify-content: center; 
 font-size: 1.5rem; 
 color: white; 
-box-shadow: 
-0 8px 24px rgba(80,100,240,0.45), 
-inset 0 1px 2px rgba(255,255,255,0.3); 
+box-shadow: none;
 }
 
 .logo-tray-icon {
