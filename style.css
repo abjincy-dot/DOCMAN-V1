@@ -125,29 +125,37 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
 }
 
 
-.header { 
-display: flex; 
-align-items: center; 
-gap: 10px; 
-margin-bottom: 24px; 
-padding: 12px 24px; 
-background: 
-radial-gradient( 
-circle at 25% 50%, 
-rgba(37,99,235,.22), 
-transparent 45% 
-), 
-linear-gradient( 
-135deg, 
-rgba(6,10,35,.95), 
-rgba(4,8,28,.98) 
-); 
-backdrop-filter: blur(20px); 
-border-radius: var(--radius-xl); 
-border: none; 
-position: relative; 
-z-index: 1; 
-transition: all var(--transition-base); 
+.header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    margin-bottom: 24px;
+
+    /* Reduced height */
+    padding: 8px 24px;
+
+    background:
+        radial-gradient(
+            circle at 25% 50%,
+            rgba(37,99,235,.22),
+            transparent 45%
+        ),
+        linear-gradient(
+            135deg,
+            rgba(6,10,35,.95),
+            rgba(4,8,28,.98)
+        );
+
+    backdrop-filter: blur(20px);
+    border-radius: var(--radius-xl);
+    border: none;
+
+    position: relative;
+    z-index: 1;
+    transition: all var(--transition-base);
+
+    min-height: 180px; /* Add this */
 }
 
 .header::before { 
