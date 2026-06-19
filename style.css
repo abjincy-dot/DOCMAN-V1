@@ -216,7 +216,7 @@ inset 0 1px 2px rgba(255,255,255,0.3);
 .header-title { 
 display: flex; 
 flex-direction: column; 
-gap: 6px; 
+gap: 2px; 
 flex: 1; 
 }
 
@@ -227,19 +227,24 @@ gap: 10px;
 flex-wrap: wrap; 
 }
 
+.header-title h1 {
+    font-size: 2rem;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    line-height: 0.9;
+    margin: 0;
 
+    background: linear-gradient(
+        135deg,
+        #ffffff,
+        #bfdbfe,
+        #a5f3fc
+    );
 
-
-
-
-.header-title h1 { 
-font-size: 2.23rem; 
-font-weight: 900; 
-letter-spacing: 1px; 
-background: linear-gradient(135deg, #fff, #bfdbfe, #a5f3fc); 
--webkit-background-clip: text; 
--webkit-text-fill-color: transparent; 
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
+
 
 body.light-mode .header-title h1 { 
 background: linear-gradient(135deg, #1e293b, #334155, #475569); 
