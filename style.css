@@ -185,6 +185,7 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
         0 0 30px rgba(236,72,153,.22);
 
     pointer-events: none;
+    overflow: hidden;
 }
 -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
@@ -199,7 +200,6 @@ box-shadow:
     0 0 50px rgba(236,72,153,.35);
 
 pointer-events: none;
-overflow: hidden;
 
 }
 
