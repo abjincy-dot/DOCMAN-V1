@@ -189,12 +189,13 @@ pointer-events: none;
 
 }
 
+.logo {
+    width: 65px;
+    height: 65px;
+    flex-shrink: 0;
 
-
-.logo { 
-width: 65px; 
-height: 65px; 
-flex-shrink: 0; 
+    position: relative;
+    top: -4px;   /* move up */
 }
 
 .logo-inner { 
