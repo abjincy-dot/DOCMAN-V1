@@ -216,7 +216,6 @@ height: 100%;
 object-fit: contain;
 padding: 4px;
 box-sizing: border-box;
-mix-blend-mode: lighten;
 }
 
 .header-title { 
