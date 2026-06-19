@@ -203,14 +203,7 @@ pointer-events: none;
 
 }
 
-.logo {
-    width: 20px;
-    height: 20px;
-    flex-shrink: 0;
-    position: relative;
-    top: -4px;
-    overflow: hidden;
-}
+
 
 .logo-inner { 
 width: 100%; 
