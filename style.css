@@ -4502,5 +4502,10 @@ color: #8b5cf6;
     position: relative;
 }
 
-
+.modal-content,
+.modal-content *,
+.modal-body input,
+.modal-body textarea {
+    box-sizing: border-box;
+}
 
