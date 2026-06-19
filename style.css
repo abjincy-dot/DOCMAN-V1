@@ -4493,12 +4493,17 @@ color: #8b5cf6;
 }
 
 .note-modal {
-    border: 0.5px solid #3b82f6;
+    position: relative;
+}
 
-    box-shadow:
-        0 0 3px rgba(59, 130, 246, 0.6);
-
-    border-radius: 28px;
+.note-modal::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1px solid #3b82f6;
+    box-shadow: 0 0 4px rgba(59,130,246,.6);
+    pointer-events: none;
 }
 
 
