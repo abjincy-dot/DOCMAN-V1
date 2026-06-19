@@ -128,12 +128,11 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
 .header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
 
     margin-bottom: 24px;
 
-    /* Reduced height */
-    padding: 6px 24px;
+    padding: 14px 18px;
 
     background:
         radial-gradient(
@@ -155,7 +154,7 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
     z-index: 1;
     transition: all var(--transition-base);
 
-    min-height: unset; /* reduced */
+    min-height: unset;
 }
 
 .header::before { 
@@ -4181,6 +4180,7 @@ font-size: 0.8rem;
 font-weight: 700; 
 letter-spacing: 0.02em; 
 color: #fff; 
+margin-left: auto;
 flex-shrink: 0; 
 transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), 
 box-shadow 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); 
@@ -4201,10 +4201,6 @@ box-shadow:
 0 0 0 1px rgba(236, 72, 153, 0.5), 
 inset 0 1px 3px rgba(255, 200, 230, 0.3), 
 inset 0 -2px 4px rgba(0, 0, 40, 0.4); 
-position: fixed;
-bottom: 24px;
-left: 24px;
-z-index: 100;
 }
 
 .header-settings-btn:active { 
@@ -4217,8 +4213,10 @@ transition: transform 0.06s ease, box-shadow 0.06s ease;
 }
 
 .header-settings-icon { 
-font-size: 0.9rem; 
-text-shadow: 0 0 8px rgba(255,255,255,0.4); 
+width: 22px;
+height: 22px;
+object-fit: contain;
+filter: drop-shadow(0 0 6px rgba(120,100,255,0.6));
 transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); 
 }
 
