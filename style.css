@@ -4495,3 +4495,9 @@ z-index: -1;
 pointer-events: none;
 
 }
+
+.logo,
+.logo-icon,
+.header-logo {
+    background: red !important;
+}
