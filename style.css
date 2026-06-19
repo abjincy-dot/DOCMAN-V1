@@ -203,8 +203,8 @@ pointer-events: none;
 }
 
 .logo {
-    width: 72px;
-    height: 72px;
+    width: 60px;
+    height: 60px;
     flex-shrink: 0;
     position: relative;
     top: -4px;
