@@ -189,12 +189,12 @@ pointer-events: none;
 }
 
 .logo {
-    width: 65px;
-    height: 65px;
+    width: 72px;
+    height: 72px;
     flex-shrink: 0;
-
     position: relative;
-    top: -4px;   /* move up */
+    top: -4px;
+    overflow: hidden;
 }
 
 .logo-inner { 
@@ -214,6 +214,8 @@ box-shadow: none;
 width: 100%;
 height: 100%;
 object-fit: contain;
+padding: 4px;
+box-sizing: border-box;
 }
 
 .header-title { 
