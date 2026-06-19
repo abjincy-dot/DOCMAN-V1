@@ -199,6 +199,7 @@ box-shadow:
     0 0 50px rgba(236,72,153,.35);
 
 pointer-events: none;
+overflow: hidden;
 
 }
 
