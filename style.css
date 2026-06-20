@@ -379,17 +379,6 @@ overflow: visible;
 }
 
 
-#homeBtn.btn-back {
-  background: none !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  width: 64px !important;
-  min-width: 64px !important;
-  height: 20px !important;
-  border-radius: 0 !important;
-  overflow: visible !important;
-}
 
 #homeBtn.btn-back {
   background: none !important;
