@@ -355,7 +355,7 @@ animation: dotPulse 2s ease-in-out infinite;
 
 .top-bar { 
 display: grid; 
-grid-template-columns: 1fr 1fr 1fr auto; 
+grid-template-columns: auto 1fr auto; 
 grid-template-rows: auto auto; 
 column-gap: 10px; 
 row-gap: 12px; 
@@ -371,7 +371,6 @@ z-index: 0;
 overflow: visible; 
 }
 
-
 .top-bar > #homeBtn,
 .top-bar > #backBtn {
   grid-column: 1;
@@ -379,12 +378,13 @@ overflow: visible;
 }
 
 .top-bar > .type-selector {
-  grid-column: 2 / 4;
+  grid-column: 3;
   grid-row: 1;
   display: flex;
   gap: 6px;
   justify-content: flex-end;
 }
+
 
 
 .top-bar > .type-selector > .type-btn { 
