@@ -3623,8 +3623,8 @@ margin-right: auto;
   object-fit: contain; 
   border-radius: 14px;
   display: block;
+  filter: brightness(1.4);
 }
-
 
 /* thin purple→pink gradient border */ 
 #homeBtn::before { 
