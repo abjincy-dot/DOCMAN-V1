@@ -3659,8 +3659,8 @@ margin-right: auto;
 }
 
 #homeBtn .home-icon-img {
-  width: 80px !important;
-  height: 80px !important;
+  width: 100%px !important;
+  height: 100%px !important;
   object-fit: contain;
   border-radius: 14px;
   display: block;
