@@ -378,7 +378,20 @@ z-index: 0;
 overflow: visible; 
 }
 
+.top-bar > #homeBtn,
+.top-bar > #backBtn {
+  grid-column: 1;
+  grid-row: 1;
+  overflow: visible;
+}
 
+.top-bar > .type-selector {
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
 
 
 
