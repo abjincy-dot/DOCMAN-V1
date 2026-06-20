@@ -4552,15 +4552,15 @@ color: #8b5cf6;
     box-sizing: border-box;
 }
 
+
 #homeBtn .home-icon-img {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: 8px;
   display: block;
   flex-shrink: 0;
+  mix-blend-mode: multiply;
 }
-
-
 
 
