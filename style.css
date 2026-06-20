@@ -385,13 +385,7 @@ overflow: visible;
   overflow: visible;
 }
 
-.top-bar > .type-selector {
-  grid-column: 3;
-  grid-row: 1;
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
-}
+
 
 #homeBtn.btn-back {
   background: none !important;
