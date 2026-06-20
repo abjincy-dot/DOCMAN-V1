@@ -381,14 +381,16 @@ min-width: 120px;
 }
 
 .top-bar > .type-selector { 
-grid-column: 2 / 4; 
-grid-row: 1; 
-display: flex; 
-gap: 6px; 
-background: transparent; 
-padding: 0; 
-clip-path: none; 
+  grid-column: 2 / 4; 
+  grid-row: 1; 
+  display: flex; 
+  gap: 6px; 
+  background: transparent; 
+  padding: 0; 
+  clip-path: none;
+  justify-content: flex-end;
 }
+
 
 .top-bar > .type-selector > .type-btn { 
 flex: 0 0 120px; 
