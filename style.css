@@ -4546,3 +4546,7 @@ color: #8b5cf6;
     box-sizing: border-box;
 }
 
+.top-bar img {
+  -webkit-touch-callout: none;
+  pointer-events: none;
+}
