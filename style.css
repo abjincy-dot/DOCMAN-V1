@@ -416,7 +416,7 @@ overflow: visible;
   grid-column: 3;
   grid-row: 1;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   justify-content: flex-end;
 }
 
