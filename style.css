@@ -3605,9 +3605,9 @@ margin-right: auto;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
-  width: 64px !important;
-  min-width: 64px !important;
-  height: 64px !important;
+  width: 60px !important;
+  min-width: 60px !important;
+  height: 60px !important; 
   border-radius: 0 !important;
 }
 
@@ -3616,9 +3616,9 @@ margin-right: auto;
 }
 
 #homeBtn .home-icon-img {
-  width: 64px !important;
-  height: 64px !important;
-  object-fit: contain;
+  width: 89px !important;
+  height: 89px !important;
+  object-fit: contain; 
   border-radius: 14px;
   display: block;
 }
