@@ -377,12 +377,14 @@ overflow: visible;
   grid-row: 1;
 }
 
+
 .top-bar > .type-selector {
   grid-column: 3;
   grid-row: 1;
   display: flex;
   gap: 6px;
   justify-content: flex-end;
+  margin-left: 20px;  /* ← ഇത് add ചെയ്യൂ */
 }
 
 
