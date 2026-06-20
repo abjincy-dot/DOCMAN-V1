@@ -270,9 +270,7 @@ background: linear-gradient(135deg, #1e293b, #334155, #475569);
 }
 
 .doc-tag { 
-    margin-top: 4px;  
-    
-  font-size: 0.7rem; 
+font-size: 0.7rem; 
   font-weight: 600; 
   color: #e2e8f0;
   background: rgba(6,182,212,0.12); 
