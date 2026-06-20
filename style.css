@@ -229,7 +229,7 @@ box-sizing: border-box;
 .header-title { 
 display: flex; 
 flex-direction: column; 
-gap: 2px; 
+gap: 5px; 
 align-items: center;
 position: absolute;
 left: 50%;
