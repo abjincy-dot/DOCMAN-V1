@@ -384,7 +384,6 @@ overflow: visible;
   display: flex;
   gap: 6px;
   justify-content: flex-end;
-  margin-left: 10px;  /* ← ഇത് add ചെയ്യൂ */
 }
 
 
