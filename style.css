@@ -3643,30 +3643,29 @@ margin-right: auto;
 }
 
 /* ── Home Button — dark pill with purple→pink border glow ── */ 
-#homeBtn {
+#homeBtn.btn-back {
   background: none !important;
   border: none !important;
-  padding: 0 !important;
   box-shadow: none !important;
-  width: 48px !important;
-  height: 48px !important;
-  cursor: pointer;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+  padding: 0 !important;
+  width: 64px !important;
+  min-width: 64px !important;
+  height: 64px !important;
+  border-radius: 0 !important;
 }
 
-#homeBtn::before {
+#homeBtn.btn-back::before {
   display: none !important;
 }
 
 #homeBtn .home-icon-img {
-  width: 48px;
-  height: 48px;
+  width: 64px !important;
+  height: 64px !important;
   object-fit: contain;
-  border-radius: 12px;
+  border-radius: 14px;
   display: block;
 }
+
 
 
 /* thin purple→pink gradient border */ 
