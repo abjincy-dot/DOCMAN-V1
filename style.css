@@ -4552,3 +4552,12 @@ color: #8b5cf6;
     box-sizing: border-box;
 }
 
+
+.home-icon-img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  mix-blend-mode: lighten;
+}
+
+
