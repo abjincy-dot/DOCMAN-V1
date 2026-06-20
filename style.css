@@ -386,8 +386,6 @@ overflow: visible;
   justify-content: flex-end;
 }
 
-
-
 .top-bar > .type-selector > .type-btn { 
 flex: 0 0 120px; 
 width: 120px; 
