@@ -372,22 +372,17 @@ overflow: visible;
 }
 
 
-.top-bar > #backBtn, 
-.top-bar > #homeBtn { 
-grid-column: 1; 
-grid-row: 1; 
-width: 120px; 
-min-width: 120px; 
+.top-bar > #homeBtn,
+.top-bar > #backBtn {
+  grid-column: 1;
+  grid-row: 1;
 }
 
-.top-bar > .type-selector { 
-  grid-column: 2 / 4; 
-  grid-row: 1; 
-  display: flex; 
-  gap: 6px; 
-  background: transparent; 
-  padding: 0; 
-  clip-path: none;
+.top-bar > .type-selector {
+  grid-column: 2 / 4;
+  grid-row: 1;
+  display: flex;
+  gap: 6px;
   justify-content: flex-end;
 }
 
