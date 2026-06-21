@@ -4332,8 +4332,8 @@ transform: rotate(60deg);
   background-repeat: no-repeat;
   background-position: center;
   filter: drop-shadow(0 0 8px rgba(100, 80, 255, 0.7));
+  pointer-events: none;
 }
-
 
 /*  
 SETTINGS — NEW COMPONENTS 
