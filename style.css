@@ -1,4 +1,4 @@
-
+o
 * /*CSS*/
 * 
 * { 
@@ -38,18 +38,18 @@
 
 
 body.light-mode { 
---bg-deep: #e2e8f0; 
---bg-gradient: linear-gradient(165deg, #d1d9e6 0%, #c5d0de 45%, #b8c4d4 100%); 
---glass-bg: rgba(209, 217, 230, 0.85); 
---glass-bg-hover: rgba(197, 208, 222, 0.92); 
+--bg-deep: #c8d4e0; 
+--bg-gradient: linear-gradient(165deg, #beccda 0%, #b8c8d8 45%, #adbdce 100%); 
+--glass-bg: rgba(185, 200, 215, 0.88); 
+--glass-bg-hover: rgba(175, 192, 208, 0.94); 
 --glass-border: rgba(0, 0, 0, 0.1); 
---glass-border-hover: rgba(0, 0, 0, 0.15); 
+--glass-border-hover: rgba(0, 0, 0, 0.16); 
 --text-primary: #1e293b; 
 --text-secondary: #334155; 
 --text-muted: #64748b; 
---card-bg: rgba(241, 245, 249, 0.92); 
---card-bg-hover: rgba(255, 255, 255, 0.96); 
---input-bg: rgba(255, 255, 255, 0.85); 
+--card-bg: rgba(200, 212, 224, 0.93); 
+--card-bg-hover: rgba(210, 220, 230, 0.97); 
+--input-bg: rgba(215, 225, 235, 0.90); 
 }
 
 body { 
@@ -722,7 +722,7 @@ transform: translateY(-50%) scale(1.1);
 }
 
 body.light-mode .search-container { 
-background: rgba(248, 250, 255, 0.92); 
+background: rgba(200, 212, 224, 0.92); 
 }
 
 body.light-mode .search-container::before { 
@@ -2341,18 +2341,18 @@ animation: searchLinePulseLight 3.5s ease-in-out infinite;
 }
 
 body.light-mode .type-selector { 
-background: rgba(248, 250, 255, 0.92); 
+background: rgba(200, 212, 224, 0.92); 
 }
 
 
 body.light-mode .header { 
-background: rgba(241, 245, 249, 0.95) !important; 
+background: rgba(200, 212, 224, 0.95) !important; 
 } 
 body.light-mode .top-bar { 
-background: rgba(241, 245, 249, 0.92) !important; 
+background: rgba(195, 208, 220, 0.92) !important; 
 } 
 body.light-mode .stats-bar { 
-background: rgba(241, 245, 249, 0.92) !important; 
+background: rgba(195, 208, 220, 0.92) !important; 
 } 
 body.light-mode .stat-item { 
 background: transparent !important; 
@@ -2448,7 +2448,7 @@ color: #4f46e5 !important;
 
 body.light-mode .file-card, 
 body.light-mode .note-card { 
-background: rgba(255, 255, 255, 0.95) !important; 
+background: rgba(205, 217, 228, 0.95) !important; 
 color: #1e293b !important; 
 } 
 body.light-mode .card-filename, 
@@ -2468,7 +2468,7 @@ color: #dc2626 !important;
 
 
 body.light-mode .folder-path-card { 
-background: rgba(241, 245, 249, 0.95) !important; 
+background: rgba(200, 212, 224, 0.95) !important; 
 color: #1e293b !important; 
 }
 
