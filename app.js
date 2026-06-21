@@ -1993,4 +1993,7 @@ document.addEventListener('contextmenu', function(e) {
     e.preventDefault();
   }
 });
+document.querySelectorAll('.logo-tray-icon, .header-gear-icon, .home-icon-img').forEach(el => {
+  el.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+});
 
