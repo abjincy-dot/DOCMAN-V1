@@ -1677,20 +1677,108 @@ function importBackupData(file) {
     reader.readAsText(file);
 }
 
-function clearAllAppData() {
-    showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
-        if (!confirmed) return;
-        fileSystem = {}; allFiles = {}; allNotes = {}; deptColors = {};
-        await saveFolderStructure();
-        const tx = db.transaction(['files', 'notes'], 'readwrite');
-        tx.objectStore('files').clear();
-        tx.objectStore('notes').clear();
-        tx.commit();
-        currentPath = [];
-        closeSettingsPage();
-        render();
-        showToast('All data erased');
+function showPinVerifyModal(title, callback) {
+    const existing = document.getElementById('pinVerifyModal');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'pinVerifyModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;';
+    overlay.innerHTML = `
+        <div style="background:#1a1a1a;border:1px solid rgba(239,68,68,0.4);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
+            <div style="width:48px;height:48px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.4rem;">🔒</div>
+            <p style="color:#e2e8f0;font-size:0.95rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;">${title}</p>
+            <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 20px;font-family:Inter,sans-serif;">Enter your 4-digit PIN to confirm</p>
+            <div id="pinVerifyDots" style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;">
+                ${[0,1,2,3].map(i => `<div id="pvDot${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);transition:all 0.15s;"></div>`).join('')}
+            </div>
+            <div id="pinVerifyGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+                ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k => `
+                    <button class="pvKey" data-key="${k}" style="padding:16px 0;border-radius:14px;border:1px solid rgba(255,255,255,${k===''?'0':'0.1'});background:${k===''?'transparent':'rgba(255,255,255,0.06)'};color:#e2e8f0;font-size:1.15rem;font-weight:600;font-family:Inter,sans-serif;cursor:${k===''?'default':'pointer'};pointer-events:${k===''?'none':'auto'};transition:background 0.1s;">${k}</button>
+                `).join('')}
+            </div>
+            <button id="pvCancel" style="width:100%;padding:12px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    let entered = '';
+    const storedPin = localStorage.getItem(PIN_KEY) || '';
+
+    function updateDots() {
+        for (let i = 0; i < 4; i++) {
+            const dot = document.getElementById(`pvDot${i}`);
+            dot.style.background = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.15)';
+            dot.style.borderColor = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.25)';
+        }
+    }
+
+    function shakeModal() {
+        const box = overlay.querySelector('div');
+        box.style.animation = 'none';
+        box.style.transition = 'transform 0.05s';
+        let count = 0;
+        const interval = setInterval(() => {
+            box.style.transform = count % 2 === 0 ? 'translateX(8px)' : 'translateX(-8px)';
+            count++;
+            if (count > 5) { clearInterval(interval); box.style.transform = ''; }
+        }, 50);
+    }
+
+    overlay.querySelectorAll('.pvKey').forEach(btn => {
+        btn.addEventListener('pointerdown', () => { btn.style.background = 'rgba(255,255,255,0.14)'; });
+        btn.addEventListener('pointerup', () => { btn.style.background = 'rgba(255,255,255,0.06)'; });
+        btn.addEventListener('click', () => {
+            const k = btn.dataset.key;
+            if (k === '⌫') {
+                entered = entered.slice(0, -1);
+                updateDots();
+            } else if (entered.length < 4 && k !== '') {
+                entered += k;
+                updateDots();
+                if (entered.length === 4) {
+                    if (entered === storedPin) {
+                        overlay.remove();
+                        callback(true);
+                    } else {
+                        showToast('Incorrect PIN', true);
+                        entered = '';
+                        updateDots();
+                        shakeModal();
+                    }
+                }
+            }
+        });
     });
+
+    document.getElementById('pvCancel').onclick = () => { overlay.remove(); callback(false); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove(); callback(false); } });
+}
+
+function clearAllAppData() {
+    const hasPin = !!localStorage.getItem(PIN_KEY);
+    if (hasPin) {
+        showPinVerifyModal('Erase All Data', (verified) => {
+            if (!verified) return;
+            doEraseAllData();
+        });
+    } else {
+        showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
+            if (!confirmed) return;
+            doEraseAllData();
+        });
+    }
+}
+
+async function doEraseAllData() {
+    fileSystem = {}; allFiles = {}; allNotes = {}; deptColors = {};
+    await saveFolderStructure();
+    const tx = db.transaction(['files', 'notes'], 'readwrite');
+    tx.objectStore('files').clear();
+    tx.objectStore('notes').clear();
+    tx.commit();
+    currentPath = [];
+    closeSettingsPage();
+    render();
+    showToast('All data erased');
 }
 
 /* --- Appearance --- */
