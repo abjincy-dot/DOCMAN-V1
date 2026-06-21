@@ -219,8 +219,8 @@ box-shadow: none;
 }
 
 .logo-tray-icon {
-  width: 56px;
-  height: 56px;
+  width: 66px;
+  height: 66px;
   background-image: url('Images/settings-tray.png');
   background-size: contain;
   background-repeat: no-repeat;
