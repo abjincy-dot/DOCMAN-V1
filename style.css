@@ -403,13 +403,21 @@ z-index: 2;
     width: 50px !important;
     height: 50px !important;
 
-    border: 1px solid #ec4899 !important;
+    border: 1px solid transparent !important;
+
+    background:
+        radial-gradient(circle at 35% 35%, #3a2060 0%, #1a0c3a 60%, #0d0820 100%) padding-box,
+        linear-gradient(
+            90deg,
+            #38bdf8 0%,
+            #6366f1 40%,
+            #8b5cf6 70%,
+            #ec4899 100%
+        ) border-box;
 
     box-shadow:
-        0 0 2px rgba(236,72,153,.9),
-        0 0 6px rgba(236,72,153,.45),
-        inset 0 1px 3px rgba(220,180,255,.18),
-        inset 0 -2px 4px rgba(0,0,30,.35) !important;
+        0 0 2px rgba(56,189,248,.35),
+        0 0 4px rgba(236,72,153,.25) !important;
 }
 
 .top-bar::before { 
