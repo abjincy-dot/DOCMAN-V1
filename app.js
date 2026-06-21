@@ -694,30 +694,34 @@ function render(){
             'SLITTER': 'fa-scissors',
             'UTILITY': 'fa-bolt',
         };
-        let html = '<div class="departments-wrapper"><div class="departments-grid">';
-        for(let dept in fileSystem){
-            const sub = Object.keys(fileSystem[dept]).length;
-            const fcount = allFiles[dept]?.length||0;
-            const ncount = allNotes[dept]?.length||0;
-            const total = countDepartmentFiles(fileSystem[dept], [dept]);
-            const icon = deptIcons[dept] || 'fa-folder';
-            const knownDepts = ['REMELT','CASTER','HRM','CRM','ANNEALING','TLL','SLITTER','UTILITY'];
-            const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? ` style="background:${deptColors[dept]}"` : '';
-        html += `<div class="dept-card" data-dept="${escapeHtml(dept)}">
-            <div class="dept-oval" onclick="selectDepartment('${escapeHtml(dept)}')">
-                <div class="dept-pill-bg"${pillBgStyle}></div>
-                <div class="dept-pill-center-icon"><i class="fas ${icon}"></i></div>
-                <div class="dept-pill-body">
-                    <div class="dept-pill-name">${escapeHtml(dept)}</div>
+        const deptKeys = Object.keys(fileSystem);
+        const hasDepts = deptKeys.length > 0;
+        let html = '';
+        if (hasDepts) {
+            html = '<div class="departments-wrapper"><div class="departments-grid">';
+            for(let dept in fileSystem){
+                const sub = Object.keys(fileSystem[dept]).length;
+                const fcount = allFiles[dept]?.length||0;
+                const ncount = allNotes[dept]?.length||0;
+                const total = countDepartmentFiles(fileSystem[dept], [dept]);
+                const icon = deptIcons[dept] || 'fa-folder';
+                const knownDepts = ['REMELT','CASTER','HRM','CRM','ANNEALING','TLL','SLITTER','UTILITY'];
+                const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? ` style="background:${deptColors[dept]}"` : '';
+            html += `<div class="dept-card" data-dept="${escapeHtml(dept)}">
+                <div class="dept-oval" onclick="selectDepartment('${escapeHtml(dept)}')">
+                    <div class="dept-pill-bg"${pillBgStyle}></div>
+                    <div class="dept-pill-center-icon"><i class="fas ${icon}"></i></div>
+                    <div class="dept-pill-body">
+                        <div class="dept-pill-name">${escapeHtml(dept)}</div>
+                    </div>
                 </div>
-            </div>
 <div class="dept-pill-icon">
     <span class="dept-count">${total}</span>
     <span class="dept-count-label">Items</span>
 </div>
-        </div>`;
-        }
-        html += `
+            </div>`;
+            }
+            html += `
 </div>
 <div class="dept-hub">
     <div class="dept-hub-circle">
@@ -727,8 +731,9 @@ function render(){
         </div>
     </div>
 </div>
-</div>
-<div class="dept-add-footer">
+</div>`;
+        }
+        html += `<div class="dept-add-footer">
     <button class="dept-add-btn" onclick="addNewDepartment()">
         <span class="dept-add-btn-icon"><i class="fas fa-plus"></i></span>
         <span class="dept-add-btn-label">Add Department</span>
@@ -739,8 +744,10 @@ function render(){
         document.getElementById('homeBtn').classList.add('hidden');
         document.getElementById('uploadBtn').classList.add('hidden');
         document.getElementById('newNoteBtn').classList.add('hidden');
-        attachDepartmentPressEffects();
-        drawDeptConnectorsWhenStable();
+        if (hasDepts) {
+            attachDepartmentPressEffects();
+            drawDeptConnectorsWhenStable();
+        }
     } else document.getElementById('departmentsSection').innerHTML = '';
     
     const hasSubfolders = Object.keys(folder).length>0;
