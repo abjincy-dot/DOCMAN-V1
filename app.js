@@ -905,14 +905,11 @@ function drawDeptConnectors() {
     });
     if (!badgeData.every(r => r.width > 0)) { setTimeout(drawDeptConnectors, 100); return; }
 
-    const wrapperOffFromParent = offsetRelTo(wrapper, wrapper.offsetParent || document.body);
     const centerYwrapper = (
         Math.min(...badgeData.map(r => r.top + r.height / 2)) +
         Math.max(...badgeData.map(r => r.top + r.height / 2))
     ) / 2;
-    const hubParent  = hubCircle.offsetParent || hubCircle.parentElement;
-    const hubParentOff = offsetRelTo(hubParent, wrapper.offsetParent || document.body);
-    const hubTopLocal = (wrapperOffFromParent.top + centerYwrapper) - hubParentOff.top - hubCircle.offsetHeight / 2;
+    const hubTopLocal = centerYwrapper - hubCircle.offsetHeight / 2;
 
     hubCircle.style.position = 'absolute';
     hubCircle.style.top = hubTopLocal + 'px';
