@@ -769,7 +769,7 @@ box-shadow:
 0 0 0 2.5px #9333ea,
 0 0 22px 6px rgba(147, 51, 234, 0.55),
 0 4px 12px rgba(0,0,0,0.5) !important;
-
+}
 .theme-toggle::before { 
 content: none; 
 }
