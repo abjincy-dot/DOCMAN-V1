@@ -219,8 +219,8 @@ box-shadow: none;
 }
 
 .logo-tray-icon {
-  width: 30%;
-  height: 30%;
+  width: 56px;
+  height: 56px;
   background-image: url('Images/settings-tray.png');
   background-size: contain;
   background-repeat: no-repeat;
@@ -228,6 +228,7 @@ box-shadow: none;
   padding: 1px;
   box-sizing: border-box;
 }
+
 
 .header-title { 
 display: flex; 
