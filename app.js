@@ -1758,12 +1758,25 @@ function clearAllAppData() {
     if (hasPin) {
         showPinVerifyModal('Erase All Data', (verified) => {
             if (!verified) return;
-            doEraseAllData();
+            showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
+                if (!confirmed) return;
+                doEraseAllData();
+            });
         });
     } else {
-        showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
-            if (!confirmed) return;
-            doEraseAllData();
+        showPromptModal('\u26a0\ufe0f No PIN set. Create a 4-digit PIN to authorize erase:', '', (val) => {
+            if (val === null) return;
+            const pin = val.trim();
+            if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true); return; }
+            localStorage.setItem(PIN_KEY, pin);
+            showToast('PIN saved. Enter it again to confirm erase.');
+            showPinVerifyModal('Confirm Erase All Data', (verified) => {
+                if (!verified) return;
+                showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
+                    if (!confirmed) return;
+                    doEraseAllData();
+                });
+            });
         });
     }
 }
