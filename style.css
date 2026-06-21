@@ -1,4 +1,4 @@
-o
+
 * /*CSS*/
 * 
 * { 
@@ -266,6 +266,8 @@ flex-wrap: wrap;
     -webkit-text-fill-color: transparent;
 }
 
+
+body.light-mode .doc-tag { color: #1e293b; }
 
 body.light-mode .header-title h1 { 
 background: linear-gradient(135deg, #1e293b, #334155, #475569); 
