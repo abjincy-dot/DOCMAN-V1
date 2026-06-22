@@ -4808,11 +4808,12 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
 }
 
 .fav-pill-img {
-    height: 80px;
+    height: 200px;
     width: auto;
-    max-width: 220px;
+    max-width: 320px;
     object-fit: contain;
     display: block;
+    margin: -70px -30px;
 }
 
 
