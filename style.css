@@ -4790,7 +4790,6 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     display: block;
 }
 .stat-item-fav {
-.stat-item-fav {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -4801,20 +4800,35 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: none;
-    border: none;
-    padding: 0;
+    background: radial-gradient(ellipse at 50% 30%, #a020a0 0%, #6b006b 50%, #3d003d 100%);
+    border: 1.5px solid rgba(180, 0, 180, 0.6);
+    border-radius: 999px;
+    padding: 0 24px;
+    height: 52px;
+    min-width: 130px;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    box-shadow:
+        0 4px 0 rgba(30, 0, 30, 0.9),
+        0 6px 16px rgba(160, 0, 160, 0.4),
+        inset 0 1px 3px rgba(255, 180, 255, 0.25),
+        inset 0 -2px 4px rgba(0, 0, 0, 0.4);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
+}
+
+.fav-pill-btn:active {
+    transform: translateY(4px);
+    box-shadow:
+        0 1px 0 rgba(30, 0, 30, 0.9),
+        inset 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .fav-pill-img {
-    height: 130px;
-    width: auto;
-    max-width: 260px;
-    object-fit: contain;
-    display: block;
-    margin: -40px -20px;
+    display: none;
 }
 
 
