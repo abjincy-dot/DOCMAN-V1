@@ -4790,6 +4790,7 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     display: block;
 }
 .stat-item-fav {
+.stat-item-fav {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -4808,13 +4809,14 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
 }
 
 .fav-pill-img {
-    height: 200px;
+    height: 130px;
     width: auto;
-    max-width: 320px;
+    max-width: 260px;
     object-fit: contain;
     display: block;
-    margin: -70px -30px;
+    margin: -40px -20px;
 }
+
 
 
 
