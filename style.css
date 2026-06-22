@@ -4770,5 +4770,23 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     flex: 0 0 auto;
 }
 
+.fav-pill-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.fav-pill-img {
+    height: 42px;
+    width: auto;
+    object-fit: contain;
+    display: block;
+}
 
 
