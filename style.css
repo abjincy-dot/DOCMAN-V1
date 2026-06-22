@@ -4765,8 +4765,8 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
 }
 
 .stat-item-fav .stat-icon-favs {
-    width: 160px !important;
-    height: 42px !important;
+    width: 180px !important;
+    height: 62px !important;
     border-radius: 999px;
     background: transparent !important;
 }
@@ -4778,7 +4778,3 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     display: block;
 }
 
-.stat-item-fav .stat-icon-bg {
-    width: 140px !important;
-    height: 38px !important;
-}
