@@ -4764,19 +4764,7 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     flex: 0 0 auto;
 }
 
-.stat-item-fav .stat-icon-favs {
-    width: 300px !important;
-    height: 100px !important;
-    border-radius: 999px;
-    background: transparent !important;
-}
 
-.stat-item-fav .stat-icon-favs img {
-    width: 100px;
-    height: 100px;
-    object-fit: contain;
-    display: block;
-}
 .stat-item-fav {
     margin-left: auto !important;
     flex: 0 0 auto;
