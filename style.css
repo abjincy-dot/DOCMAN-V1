@@ -1,4 +1,4 @@
-o
+    o
 * /*CSS*/
 * 
 * { 
@@ -4759,4 +4759,21 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
 .top-bar img {
   -webkit-touch-callout: none;
   pointer-events: none;
+}
+.stat-item-fav {
+    flex: 0 0 auto;
+}
+
+.stat-item-fav .stat-icon-favs {
+    width: 140px !important;
+    height: 38px !important;
+    border-radius: 999px;
+    background: transparent !important;
+}
+
+.stat-item-fav .stat-icon-favs img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
 }
