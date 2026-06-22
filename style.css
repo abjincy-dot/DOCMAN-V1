@@ -4777,4 +4777,18 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     object-fit: contain;
     display: block;
 }
+.stat-item-fav {
+    margin-left: auto !important;
+    flex: 0 0 auto;
+}
 
+.stats-bar {
+    display: flex;
+    align-items: center;
+}
+
+.stat-item-fav .stat-icon-favs,
+.stat-item-fav .stat-icon-bg {
+    width: 180px !important;
+    height: 48px !important;
+}
