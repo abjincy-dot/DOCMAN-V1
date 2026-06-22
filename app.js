@@ -591,6 +591,7 @@ function createFileCard(file, folderPath){
         <div class="card-icon"><i class="fas ${iconClass}"></i></div>
         <div class="card-filename" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
         <div class="card-buttons">
+            <button class="fav-file-btn${file.favourite ? ' fav-active' : ''}" title="Favourite"><i class="fas fa-star"></i></button>
             <button class="rename-file-btn" title="Rename"><i class="fas fa-edit"></i></button>
             <button class="delete-file-btn" title="Delete"><i class="fas fa-trash"></i></button>
         </div>
@@ -600,8 +601,18 @@ function createFileCard(file, folderPath){
     div.addEventListener('click', (e)=>{
         if(_touchCount > 1) { _touchCount = 0; return; }
         _touchCount = 0;
-        if(e.target.closest('.rename-file-btn') || e.target.closest('.delete-file-btn')) return;
+        if(e.target.closest('.rename-file-btn') || e.target.closest('.delete-file-btn') || e.target.closest('.fav-file-btn')) return;
         openFile(file.dataUrl, file.name);
+    });
+    div.querySelector('.fav-file-btn').addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const files = allFiles[folderPath];
+        if (!files) return;
+        const f = files.find(x => x.name === file.name);
+        if (f) { f.favourite = !f.favourite; file.favourite = f.favourite; }
+        div.querySelector('.fav-file-btn').classList.toggle('fav-active', !!file.favourite);
+        saveAllFilesToDB();
+        showToast(file.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
     });
     div.querySelector('.rename-file-btn').addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -621,13 +632,24 @@ function createNoteCard(note, folderPath){
         <div class="card-icon"><i class="fas fa-sticky-note"></i></div>
         <div class="card-filename" title="${escapeHtml(note.title)}">${escapeHtml(note.title)}</div>
         <div class="card-buttons">
+            <button class="fav-note-btn${note.favourite ? ' fav-active' : ''}" title="Favourite"><i class="fas fa-star"></i></button>
             <button class="rename-note-btn" title="Rename Note"><i class="fas fa-edit"></i></button>
             <button class="delete-note-btn" title="Delete Note"><i class="fas fa-trash"></i></button>
         </div>
     `;
     div.addEventListener('click', (e)=>{
-        if(e.target.closest('.rename-note-btn') || e.target.closest('.delete-note-btn')) return;
+        if(e.target.closest('.rename-note-btn') || e.target.closest('.delete-note-btn') || e.target.closest('.fav-note-btn')) return;
         openNote({...note, folder:folderPath});
+    });
+    div.querySelector('.fav-note-btn').addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const notes = allNotes[folderPath];
+        if (!notes) return;
+        const n = notes.find(x => x.id === note.id);
+        if (n) { n.favourite = !n.favourite; note.favourite = n.favourite; }
+        div.querySelector('.fav-note-btn').classList.toggle('fav-active', !!note.favourite);
+        saveAllNotesToDB();
+        showToast(note.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
     });
     div.querySelector('.rename-note-btn').addEventListener('click', (e)=>{
         e.stopPropagation();
@@ -1217,7 +1239,7 @@ function attachPressEffects(){
         themeBtn.onclick = toggleTheme;
     }
 
-    const selectors = ['#homeBtn','.type-btn','#uploadBtn','#newNoteBtn','.action-btn','.rename-file-btn','.delete-file-btn','.rename-note-btn','.delete-note-btn','.clear-search','.modal-close','.modal-footer button','.breadcrumb-item','.card','.dept-oval','#closeImageViewer'];
+    const selectors = ['#homeBtn','.type-btn','#uploadBtn','#newNoteBtn','.action-btn','.fav-file-btn','.fav-note-btn','.rename-file-btn','.delete-file-btn','.rename-note-btn','.delete-note-btn','.clear-search','.modal-close','.modal-footer button','.breadcrumb-item','.card','.dept-oval','#closeImageViewer'];
     document.querySelectorAll(selectors.join(',')).forEach(el=>{
         el.removeEventListener('click', pressHandler);
         el.removeEventListener('touchstart', pressHandler, {passive:false});
