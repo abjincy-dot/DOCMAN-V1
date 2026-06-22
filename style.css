@@ -1769,6 +1769,29 @@ border: 1px solid #f43f5e !important;
 color: #fda4af !important; 
 }
 
+.fav-file-btn, .fav-note-btn {
+background: rgba(250,204,21,0.12) !important;
+border: 1px solid rgba(250,204,21,0.35) !important;
+color: rgba(250,204,21,0.45) !important;
+transition: all 0.2s ease !important;
+}
+.fav-file-btn.fav-active, .fav-note-btn.fav-active {
+background: rgba(250,204,21,0.22) !important;
+border: 1px solid #facc15 !important;
+color: #facc15 !important;
+}
+body.light-mode .fav-file-btn, body.light-mode .fav-note-btn {
+background: rgba(202,138,4,0.1) !important;
+border: 1px solid rgba(202,138,4,0.3) !important;
+color: rgba(202,138,4,0.4) !important;
+}
+body.light-mode .fav-file-btn.fav-active, body.light-mode .fav-note-btn.fav-active {
+background: rgba(202,138,4,0.18) !important;
+border: 1px solid #ca8a04 !important;
+color: #ca8a04 !important;
+}
+
+
 .card.glow-folder, .note-card, .file-card { 
 border-radius: 60px !important; 
 }
