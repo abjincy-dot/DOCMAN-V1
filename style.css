@@ -4777,6 +4777,6 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
 
 .stat-item-fav .stat-icon-favs,
 .stat-item-fav .stat-icon-bg {
-    width: 180px !important;
-    height: 48px !important;
+    width: 300px !important;
+    height: 100px !important;
 }
