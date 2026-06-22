@@ -1171,15 +1171,140 @@ function countDepartmentFiles(obj, path = []) {
     return total;
 }
 function updateStats(){
-    let folderCount=0, fileCount=0, notesCount=0;
+    let folderCount=0, fileCount=0, notesCount=0, favCount=0;
     function countFolders(obj){ for(let k in obj) if(typeof obj[k]==='object'){ folderCount++; countFolders(obj[k]); } }
     countFolders(fileSystem);
-    for(let k in allFiles) if(allFiles[k]) fileCount += allFiles[k].length;
-    for(let k in allNotes) if(allNotes[k]) notesCount += allNotes[k].length;
+    for(let k in allFiles) if(allFiles[k]) { fileCount += allFiles[k].length; favCount += allFiles[k].filter(f=>f.favourite).length; }
+    for(let k in allNotes) if(allNotes[k]) { notesCount += allNotes[k].length; favCount += allNotes[k].filter(n=>n.favourite).length; }
     document.getElementById('folderCount').textContent = folderCount;
     document.getElementById('fileCount').textContent = fileCount;
     document.getElementById('notesCount').textContent = notesCount;
+    document.getElementById('favCount').textContent = favCount;
+    const favItem = document.getElementById('favStatItem');
+    if (favItem && !favItem._wired) {
+        favItem._wired = true;
+        favItem.addEventListener('click', openFavouritesView);
+    }
 }
+function openFavouritesView() {
+    // Collect all favourited files and notes
+    const favFiles = [], favNotes = [];
+    for (const folderPath in allFiles) {
+        if (!allFiles[folderPath]) continue;
+        for (const f of allFiles[folderPath]) {
+            if (f.favourite) favFiles.push({ file: f, folderPath });
+        }
+    }
+    for (const folderPath in allNotes) {
+        if (!allNotes[folderPath]) continue;
+        for (const n of allNotes[folderPath]) {
+            if (n.favourite) favNotes.push({ note: n, folderPath });
+        }
+    }
+
+    const list = document.getElementById('favViewList');
+    if (!favFiles.length && !favNotes.length) {
+        list.innerHTML = '<div class="fav-empty"><i class="fas fa-heart-crack"></i><p>No favourites yet.<br>Tap ⭐ on any file or note to add it here.</p></div>';
+    } else {
+        list.innerHTML = '';
+        if (favFiles.length) {
+            const sec = document.createElement('div');
+            sec.className = 'fav-section-title';
+            sec.innerHTML = `<i class="fas fa-file"></i> Files <span>${favFiles.length}</span>`;
+            list.appendChild(sec);
+            favFiles.forEach(({ file, folderPath }) => {
+                const iconClass = getFileIcon(file.name);
+                const row = document.createElement('div');
+                row.className = 'fav-row';
+                row.innerHTML = `
+                    <div class="fav-row-icon"><i class="fas ${iconClass}"></i></div>
+                    <div class="fav-row-info">
+                        <div class="fav-row-name">${escapeHtml(file.name)}</div>
+                        <div class="fav-row-path">${escapeHtml(folderPath)}</div>
+                    </div>
+                    <button class="fav-row-unfav" title="Remove favourite"><i class="fas fa-heart"></i></button>
+                `;
+                row.querySelector('.fav-row-unfav').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const arr = allFiles[folderPath];
+                    if (arr) { const f2 = arr.find(x => x.name === file.name); if (f2) f2.favourite = false; }
+                    saveAllFilesToDB();
+                    updateStats();
+                    row.classList.add('fav-row-removing');
+                    setTimeout(() => { row.remove(); checkFavEmpty(list); }, 280);
+                });
+                row.addEventListener('click', (e) => {
+                    if (e.target.closest('.fav-row-unfav')) return;
+                    closeFavouritesView();
+                    openFile(file.dataUrl, file.name);
+                });
+                list.appendChild(row);
+            });
+        }
+        if (favNotes.length) {
+            const sec = document.createElement('div');
+            sec.className = 'fav-section-title';
+            sec.innerHTML = `<i class="fas fa-sticky-note"></i> Notes <span>${favNotes.length}</span>`;
+            list.appendChild(sec);
+            favNotes.forEach(({ note, folderPath }) => {
+                const row = document.createElement('div');
+                row.className = 'fav-row';
+                row.innerHTML = `
+                    <div class="fav-row-icon fav-row-icon-note"><i class="fas fa-sticky-note"></i></div>
+                    <div class="fav-row-info">
+                        <div class="fav-row-name">${escapeHtml(note.title)}</div>
+                        <div class="fav-row-path">${escapeHtml(folderPath)}</div>
+                    </div>
+                    <button class="fav-row-unfav" title="Remove favourite"><i class="fas fa-heart"></i></button>
+                `;
+                row.querySelector('.fav-row-unfav').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const arr = allNotes[folderPath];
+                    if (arr) { const n2 = arr.find(x => x.id === note.id); if (n2) n2.favourite = false; }
+                    saveAllNotesToDB();
+                    updateStats();
+                    row.classList.add('fav-row-removing');
+                    setTimeout(() => { row.remove(); checkFavEmpty(list); }, 280);
+                });
+                row.addEventListener('click', (e) => {
+                    if (e.target.closest('.fav-row-unfav')) return;
+                    closeFavouritesView();
+                    openNote({ ...note, folder: folderPath });
+                });
+                list.appendChild(row);
+            });
+        }
+    }
+
+    // Hide main content, show favourites view
+    document.getElementById('departmentsSection').style.display = 'none';
+    document.getElementById('content').style.display = 'none';
+    document.getElementById('breadcrumb').style.display = 'none';
+    document.getElementById('searchInfo').classList.add('hidden');
+    const favView = document.getElementById('favouritesView');
+    favView.classList.remove('hidden');
+    requestAnimationFrame(() => favView.classList.add('fav-view-visible'));
+
+    document.getElementById('favViewBackBtn').onclick = closeFavouritesView;
+}
+
+function checkFavEmpty(list) {
+    const rows = list.querySelectorAll('.fav-row');
+    if (!rows.length) {
+        list.innerHTML = '<div class="fav-empty"><i class="fas fa-heart-crack"></i><p>No favourites yet.<br>Tap ⭐ on any file or note to add it here.</p></div>';
+        document.getElementById('favCount').textContent = '0';
+    }
+}
+
+function closeFavouritesView() {
+    const favView = document.getElementById('favouritesView');
+    favView.classList.remove('fav-view-visible');
+    setTimeout(() => favView.classList.add('hidden'), 260);
+    document.getElementById('departmentsSection').style.display = '';
+    document.getElementById('content').style.display = '';
+    document.getElementById('breadcrumb').style.display = '';
+}
+
 function setActiveTab(tab){
     currentActiveTab = tab;
     const pdfBtn = document.getElementById('pdfTabBtn');
