@@ -1640,7 +1640,100 @@ async function renderStoragePanel() {
     }
 }
 
-/* --- Export / Import --- */
+/* --- Storage Detail Panel --- */
+async function renderStorageDetailPanel() {
+    const body = document.getElementById('storageDetailBody');
+    body.innerHTML = '<div class="storage-detail-loading"><i class="fas fa-spinner fa-spin"></i> Calculating…</div>';
+
+    // Calculate sizes from dataUrl lengths (base64 ≈ actual * 4/3)
+    const b64ToBytes = (b64) => Math.round((b64.length * 3) / 4);
+
+    // By type: PDF vs image
+    let pdfBytes = 0, imgBytes = 0, pdfCount = 0, imgCount = 0;
+    // By department: { deptName: { bytes, docs, notes } }
+    const deptMap = {};
+
+    for (const dept of Object.keys(fileSystem)) {
+        deptMap[dept] = { bytes: 0, docs: 0, notes: 0 };
+    }
+
+    for (const folderPath in allFiles) {
+        if (!allFiles[folderPath]) continue;
+        const topDept = folderPath.split('/')[0];
+        for (const f of allFiles[folderPath]) {
+            const bytes = f.dataUrl ? b64ToBytes(f.dataUrl) : 0;
+            if (f.type === 'application/pdf' || f.name?.toLowerCase().endsWith('.pdf')) {
+                pdfBytes += bytes; pdfCount++;
+            } else {
+                imgBytes += bytes; imgCount++;
+            }
+            if (deptMap[topDept]) {
+                deptMap[topDept].bytes += bytes;
+                deptMap[topDept].docs++;
+            }
+        }
+    }
+
+    // Notes size (JSON string estimate)
+    let noteBytes = 0;
+    for (const folderPath in allNotes) {
+        if (!allNotes[folderPath]) continue;
+        const topDept = folderPath.split('/')[0];
+        for (const n of allNotes[folderPath]) {
+            const nb = new Blob([JSON.stringify(n)]).size;
+            noteBytes += nb;
+            if (deptMap[topDept]) {
+                deptMap[topDept].bytes += nb;
+                deptMap[topDept].notes++;
+            }
+        }
+    }
+
+    const totalBytes = pdfBytes + imgBytes + noteBytes;
+    const fmt = (b) => b < 1024 * 1024 ? (b / 1024).toFixed(1) + ' KB' : (b / (1024 * 1024)).toFixed(2) + ' MB';
+    const pct = (b) => totalBytes > 0 ? Math.round((b / totalBytes) * 100) : 0;
+
+    // Sort depts by size desc
+    const deptEntries = Object.entries(deptMap).sort((a, b) => b[1].bytes - a[1].bytes);
+
+    const deptRows = deptEntries.map(([dept, info]) => {
+        const p = pct(info.bytes);
+        return `
+        <div class="sd-dept-row">
+          <div class="sd-dept-name">${dept}</div>
+          <div class="sd-dept-bar-wrap"><div class="sd-dept-bar" style="width:${p}%"></div></div>
+          <div class="sd-dept-meta">${fmt(info.bytes)} · ${info.docs} doc${info.docs !== 1 ? 's' : ''}${info.notes ? ` · ${info.notes} note${info.notes !== 1 ? 's' : ''}` : ''}</div>
+        </div>`;
+    }).join('');
+
+    body.innerHTML = `
+      <div class="settings-group-title">By File Type</div>
+      <div class="settings-card sd-type-card">
+        <div class="sd-type-row">
+          <div class="sd-type-icon sd-icon-pdf"><i class="fas fa-file-pdf"></i></div>
+          <div class="sd-type-info"><span class="sd-type-label">PDFs</span><span class="sd-type-count">${pdfCount} file${pdfCount !== 1 ? 's' : ''}</span></div>
+          <div class="sd-type-size">${fmt(pdfBytes)}</div>
+        </div>
+        <div class="sd-type-row">
+          <div class="sd-type-icon sd-icon-img"><i class="fas fa-image"></i></div>
+          <div class="sd-type-info"><span class="sd-type-label">Images</span><span class="sd-type-count">${imgCount} file${imgCount !== 1 ? 's' : ''}</span></div>
+          <div class="sd-type-size">${fmt(imgBytes)}</div>
+        </div>
+        <div class="sd-type-row">
+          <div class="sd-type-icon sd-icon-note"><i class="fas fa-sticky-note"></i></div>
+          <div class="sd-type-info"><span class="sd-type-label">Notes</span><span class="sd-type-count">${Object.values(allNotes).reduce((a,b)=>a+(b?.length||0),0)} note${Object.values(allNotes).reduce((a,b)=>a+(b?.length||0),0) !== 1 ? 's' : ''}</span></div>
+          <div class="sd-type-size">${fmt(noteBytes)}</div>
+        </div>
+      </div>
+      <div class="settings-group-title">By Department</div>
+      <div class="settings-card sd-dept-card">
+        ${deptEntries.length ? deptRows : '<div class="sd-empty">No departments yet</div>'}
+      </div>
+      <div class="sd-total-note">Total estimated: <b>${fmt(totalBytes)}</b></div>
+    `;
+}
+
+
 function exportBackupData() {
     const backup = { fileSystem, allFiles, allNotes, deptColors, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
@@ -2077,7 +2170,10 @@ function initSettingsPage() {
     /* Storage */
     document.getElementById('exportDataBtn').onclick = exportBackupData;
     document.getElementById('clearAllDataBtn').onclick = clearAllAppData;
-    document.getElementById('viewStorageDetailsBtn').onclick = () => showToast('Detailed view coming soon');
+    document.getElementById('viewStorageDetailsBtn').onclick = () => {
+        showSettingsScreen('settingsPanel-storageDetail');
+        renderStorageDetailPanel();
+    };
 
     const importFileInput = document.getElementById('importFileInput');
     document.getElementById('importDataBtn').onclick = () => importFileInput.click();
