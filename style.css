@@ -4782,7 +4782,7 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     -webkit-tap-highlight-color: transparent;
 }
 .fav-pill-img {
-    height: 100px;
+    height: 300px;
     width: 100;
     max-width: 100px;
     object-fit: contain;
