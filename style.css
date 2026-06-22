@@ -4772,8 +4772,8 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
 }
 
 .stat-item-fav .stat-icon-favs img {
-    width: 100%;
-    height: 100%;
+    width: 100px;
+    height: 100px;
     object-fit: contain;
     display: block;
 }
