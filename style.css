@@ -4794,7 +4794,6 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 52px;  /* match stat icon height */
 }
 
 .fav-pill-btn {
@@ -4805,14 +4804,13 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     border: none;
     padding: 0;
     cursor: pointer;
-    flex-shrink: 0;
     -webkit-tap-highlight-color: transparent;
 }
 
 .fav-pill-img {
-    height: 52px;      /* ← was 66px, bump down or up to taste */
+    height: 80px;
     width: auto;
-    max-width: 180px;  /* allow it to be wider */
+    max-width: 220px;
     object-fit: contain;
     display: block;
 }
