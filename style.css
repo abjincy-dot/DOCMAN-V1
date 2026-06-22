@@ -1031,10 +1031,11 @@ font-size: 1.35rem;
 /* Favourites stat card */
 .stat-item-fav { cursor: pointer; transition: opacity 0.15s; }
 .stat-item-fav:active { opacity: 0.7; }
+
 .stat-icon-favs {
-    background: linear-gradient(135deg, rgba(244,63,94,0.28), rgba(244,63,94,0.08));
-    border-color: rgba(244,63,94,0.55);
-    color: #f43f5e;
+    background: transparent;
+    border: none;
+    box-shadow: none;
 }
 
 /* Favourites full view */
