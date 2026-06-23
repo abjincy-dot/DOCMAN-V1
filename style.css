@@ -148,7 +148,7 @@ animation: childReveal 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.30s both;
 
     backdrop-filter: blur(20px);
     border-radius: var(--radius-xl);
-    border: 1px solid rgba(90, 130, 255, 0.55);
+    border: 0.5px solid rgba(90, 130, 255, 0.55);
 box-shadow:
     inset 0 0 0 1px rgba(255,255,255,0.04),
     0 0 4px rgba(59,130,246,0.18);
