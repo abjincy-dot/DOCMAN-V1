@@ -30,7 +30,7 @@ function saveSettings() {
 let docmanSettings = loadSettings();
 
 const DB_NAME = 'DocmanDB';
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 let db = null;
 let allFiles = {};
 let allNotes = {};
