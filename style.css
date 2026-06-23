@@ -601,35 +601,31 @@ border-radius: 16px;
 background: #0c1120; 
 }
 
-.search-container::before { 
-content: ''; 
-position: absolute; 
-inset: 0; 
-border-radius: 16px; 
-padding: 1px; 
-background: linear-gradient(
-90deg,
-#c026d3 0%,
-#7c3aed 45%,
-#2563eb 100%
-);
-box-shadow: 
-0 0 5px 1px rgba(192, 38, 211, 0.7), 
-0 0 16px 3px rgba(192, 38, 211, 0.32), 
-0 0 5px 1px rgba(37, 99, 235, 0.7), 
-0 0 16px 3px rgba(37, 99, 235, 0.32), 
-0 0 28px 5px rgba(120, 50, 220, 0.14); 
--webkit-mask: 
-linear-gradient(#fff 0 0) content-box, 
-linear-gradient(#fff 0 0); 
-mask: 
-linear-gradient(#fff 0 0) content-box, 
-linear-gradient(#fff 0 0); 
--webkit-mask-composite: xor; 
-mask-composite: exclude; 
-animation: searchLinePulse 3.5s ease-in-out infinite; 
-pointer-events: none; 
-z-index: 1; 
+.search-container::before {
+content: '';
+position: absolute;
+inset: 0;
+border-radius: 16px;
+padding: 1px;
+
+background: rgba(90,130,255,0.55);
+
+box-shadow:
+0 0 4px rgba(59,130,246,0.18);
+
+-webkit-mask:
+linear-gradient(#fff 0 0) content-box,
+linear-gradient(#fff 0 0);
+
+mask:
+linear-gradient(#fff 0 0) content-box,
+linear-gradient(#fff 0 0);
+
+-webkit-mask-composite: xor;
+mask-composite: exclude;
+
+pointer-events: none;
+z-index: 1;
 }
 
 @keyframes searchLinePulse { 
