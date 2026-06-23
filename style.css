@@ -3413,17 +3413,16 @@ color: var(--text-muted);
 
 
 
-.dept-connector-svg { 
-position: absolute; 
-top: 0; 
-left: 0; 
-width: 100%; 
-height: 100%; 
-pointer-events: none; 
-z-index: 2; 
-overflow: visible; 
+.dept-connector-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 2;
+    overflow: visible;
 }
-
 
 .action-btns-wrap { 
 display: flex; 
