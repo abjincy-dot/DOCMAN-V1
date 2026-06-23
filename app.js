@@ -30,24 +30,12 @@ function saveSettings() {
 let docmanSettings = loadSettings();
 
 const DB_NAME = 'DocmanDB';
-const DB_VERSION = 10;
+const DB_VERSION = 9;
 let db = null;
 let allFiles = {};
 let allNotes = {};
 let fileSystem = {};
-let deptColors = {
-    REMELT:    "linear-gradient(90deg,#2563ff 0%,#1234c9 100%)",
-    CASTER:    "linear-gradient(90deg,#14c8a8 0%,#0a927a 100%)",
-    HRM:       "linear-gradient(90deg,#9d3cff 0%,#5d19d8 100%)",
-    CRM:       "linear-gradient(90deg,#ff3ea8 0%,#c31679 100%)",
-    ANNEALING: "linear-gradient(90deg,#ff6b1a 0%,#d14f00 100%)",
-    TLL:       "linear-gradient(90deg,#f0b21a 0%,#bf8600 100%)",
-    SLITTER:   "linear-gradient(90deg,#32c88c 0%,#167f59 100%)",
-    UTILITY:   "linear-gradient(90deg,#00c2ff 0%,#0078d4 100%)"
-};
-
-
-for departments
+let deptColors = {}; // store random gradients for departments
 let currentPath = [];
 let isSearchMode = false;
 let currentActiveTab = 'pdfs';
@@ -739,10 +727,8 @@ function render(){
                 const ncount = allNotes[dept]?.length||0;
                 const total = countDepartmentFiles(fileSystem[dept], [dept]);
                 const icon = deptIcons[dept] || 'fa-folder';
-                const pillBgStyle = deptColors[dept]
-    ? ` style="background:${deptColors[dept]}"`
-    : '';
-                    
+                const knownDepts = ['REMELT','CASTER','HRM','CRM','ANNEALING','TLL','SLITTER','UTILITY'];
+                const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? ` style="background:${deptColors[dept]}"` : '';
             html += `<div class="dept-card" data-dept="${escapeHtml(dept)}">
                 <div class="dept-oval" onclick="selectDepartment('${escapeHtml(dept)}')">
                     <div class="dept-pill-bg"${pillBgStyle}></div>
