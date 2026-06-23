@@ -607,7 +607,12 @@ position: absolute;
 inset: 0; 
 border-radius: 16px; 
 padding: 1px; 
-background: rgba(90,130,255,0.55);
+background: linear-gradient(
+90deg,
+#c026d3 0%,
+#7c3aed 45%,
+#2563eb 100%
+);
 box-shadow: 
 0 0 5px 1px rgba(192, 38, 211, 0.7), 
 0 0 16px 3px rgba(192, 38, 211, 0.32), 
