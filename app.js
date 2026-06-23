@@ -739,10 +739,7 @@ function render(){
                 const ncount = allNotes[dept]?.length||0;
                 const total = countDepartmentFiles(fileSystem[dept], [dept]);
                 const icon = deptIcons[dept] || 'fa-folder';
-                const knownDepts = ['REMELT','CASTER','HRM','CRM','ANNEALING','TLL','SLITTER','UTILITY'];
-                const pillBgStyle = (!
-                    
-                    const pillBgStyle = deptColors[dept]
+                const pillBgStyle = deptColors[dept]
     ? ` style="background:${deptColors[dept]}"`
     : '';
                     
