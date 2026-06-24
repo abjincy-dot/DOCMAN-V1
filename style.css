@@ -1801,7 +1801,7 @@ align-items: center;
 gap: 10px; 
 transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.2); 
 position: relative; 
-overflow: hidden; 
+overflow: visible; 
 min-height: 36px !important; 
 height: auto !important; 
 line-height: 1; 
@@ -1863,6 +1863,7 @@ display: flex;
 flex-direction: column;
 gap: 2px;
 min-width: 0;
+overflow: hidden;
 }
 
 .card-meta {
@@ -1876,7 +1877,7 @@ line-height: 1;
 display: flex !important; 
 gap: 4px !important; 
 flex-shrink: 0 !important; 
-margin-left: 8px !important; 
+margin-left: auto !important;
 }
 
 .card-buttons button { 
