@@ -3406,6 +3406,29 @@ font-size: 0.78rem;
 color: var(--text-muted); 
 }
 
+.upload-dz-btn {
+margin-top: 8px;
+padding: 11px 28px;
+border-radius: var(--radius-full);
+border: none;
+background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+color: #fff;
+font-size: 0.88rem;
+font-weight: 600;
+font-family: inherit;
+cursor: pointer;
+display: inline-flex;
+align-items: center;
+gap: 8px;
+box-shadow: 0 4px 16px rgba(59,130,246,0.35);
+transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.upload-dz-btn:active {
+transform: scale(0.96);
+box-shadow: 0 2px 8px rgba(59,130,246,0.25);
+}
+
 
 
 
