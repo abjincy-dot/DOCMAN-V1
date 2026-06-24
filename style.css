@@ -3369,7 +3369,6 @@ border: 2px dashed rgba(100, 140, 255, 0.4);
 border-radius: var(--radius-lg); 
 padding: 40px 24px; 
 text-align: center; 
-cursor: pointer; 
 background: rgba(10,18,50,0.35); 
 transition: all 0.2s ease; 
 display: flex; 
