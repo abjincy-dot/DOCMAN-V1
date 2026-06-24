@@ -855,9 +855,11 @@ function render(){
             const path = currentPath.join('/');
             if(files.length) files.forEach(f=>document.getElementById('content').appendChild(createFileCard(f,path)));
             else {
-                const dz = document.createElement('div');
-                dz.className = 'upload-drop-zone';
-                dz.innerHTML = `<i class="fas fa-cloud-upload-alt upload-dz-icon"></i><div class="upload-dz-text">No files here yet</div>`;
+               
+const dz = document.createElement('div');
+dz.className = 'empty-state';
+dz.innerHTML = `<i class="fas fa-cloud-upload-alt"></i><p>No files here yet</p>`;
+document.getElementById('content').appendChild(dz);
 
                 document.getElementById('content').appendChild(dz);
             }
