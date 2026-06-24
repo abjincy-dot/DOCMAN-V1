@@ -858,7 +858,7 @@ function render(){
                 const dz = document.createElement('div');
                 dz.className = 'upload-drop-zone';
                 dz.innerHTML = `<i class="fas fa-cloud-upload-alt upload-dz-icon"></i><div class="upload-dz-text">No files here yet</div>`;
-                dz.addEventListener('click', () => triggerUpload());
+
                 document.getElementById('content').appendChild(dz);
             }
         } else {
