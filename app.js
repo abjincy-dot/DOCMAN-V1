@@ -583,13 +583,25 @@ function openNote(note){
     modal.classList.add('show');
 }
 
+function getFileSizeLabel(dataUrl) {
+    if (!dataUrl) return '';
+    const bytes = Math.round((dataUrl.length * 3) / 4);
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
 function createFileCard(file, folderPath){
     const iconClass = getFileIcon(file.name);
     const div = document.createElement('div');
     div.className = 'card file-card';
+    const sizeLabel = getFileSizeLabel(file.dataUrl);
     div.innerHTML = `
         <div class="card-icon"><i class="fas ${iconClass}"></i></div>
-        <div class="card-filename" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+        <div class="card-info">
+            <div class="card-filename" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+            ${sizeLabel ? `<div class="card-meta">${sizeLabel}</div>` : ''}
+        </div>
         <div class="card-buttons">
             <button class="fav-file-btn${file.favourite ? ' fav-active' : ''}" title="Favourite"><i class="fas fa-star"></i></button>
             <button class="rename-file-btn" title="Rename"><i class="fas fa-edit"></i></button>
@@ -1230,7 +1242,6 @@ function openFavouritesView() {
                     if (arr) { const f2 = arr.find(x => x.name === file.name); if (f2) f2.favourite = false; }
                     saveAllFilesToDB();
                     updateStats();
-                    render();
                     row.classList.add('fav-row-removing');
                     setTimeout(() => { row.remove(); checkFavEmpty(list); }, 280);
                 });
@@ -1264,7 +1275,6 @@ function openFavouritesView() {
                     if (arr) { const n2 = arr.find(x => x.id === note.id); if (n2) n2.favourite = false; }
                     saveAllNotesToDB();
                     updateStats();
-                    render();
                     row.classList.add('fav-row-removing');
                     setTimeout(() => { row.remove(); checkFavEmpty(list); }, 280);
                 });
