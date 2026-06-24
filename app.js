@@ -857,14 +857,7 @@ function render(){
             else {
                 const dz = document.createElement('div');
                 dz.className = 'upload-drop-zone';
-                dz.innerHTML = `
-                    <i class="fas fa-cloud-upload-alt upload-dz-icon"></i>
-                    <div class="upload-dz-text">No files here yet</div>
-                    <div class="upload-dz-sub">Drag &amp; drop or tap the button below</div>
-                    <button class="upload-dz-btn" onclick="event.stopPropagation(); triggerUpload()">
-                        <i class="fas fa-plus"></i> Upload File
-                    </button>
-                `;
+                dz.innerHTML = `<i class="fas fa-cloud-upload-alt upload-dz-icon"></i><div class="upload-dz-text">No files here yet</div><div class="upload-dz-sub">Tap Upload to add files.</div>`;
                 dz.addEventListener('click', () => triggerUpload());
                 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
                 dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
