@@ -439,10 +439,20 @@ async function loadFromIndexedDB() {
                     "LAUNDER PANEL ": {}, 
                     "HPU 1": {}, 
                     "HPU 2": {}, 
-                    "A":{}, 
-                    "B":{}, 
-                    "C":{}, 
-                    "D":{}, 
+                    "M":{}, 
+                    "N":{}, 
+                    "O":{}, 
+                    "P":{}, 
+                    "Q":{}, 
+                    "R":{}, 
+                    "S":{}, 
+                    "T":{}, 
+                    "U":{}, 
+                    "V":{}, 
+                    "W":{}, 
+                    "X":{}, 
+                    "Y":{}, 
+                    "Z":{}
                 },
                 "CASTER":{"Quality Reports":{},"Mechanical":{},"Maintenance":{},"Production Data":{},"Testing":{},"Checklists":{},"Safety":{},"Training":{}},
                 "HRM":{"Employee Records":{},"Attendance":{},"Performance":{},"Training Logs":{},"Safety Compliance":{},"Policies":{},"Reports":{},"Certifications":{}},
@@ -636,8 +646,11 @@ function createFileCard(file, folderPath){
         <i class="fas fa-star card-fav-indicator${file.favourite ? '' : ' card-fav-hidden'}"></i>
     `;
     let pressTimer = null;
+    let longPressTriggered = false;
     const startPress = () => {
+        longPressTriggered = false;
         pressTimer = setTimeout(() => {
+            longPressTriggered = true;
             pressTimer = null;
             div.classList.add('card-long-press');
             setTimeout(() => div.classList.remove('card-long-press'), 300);
@@ -674,9 +687,7 @@ function createFileCard(file, folderPath){
     div.addEventListener('click', (e) => {
         if (_touchCount > 1) { _touchCount = 0; return; }
         _touchCount = 0;
-        if (pressTimer === null) return;
-        clearTimeout(pressTimer);
-        pressTimer = null;
+        if (longPressTriggered) { longPressTriggered = false; return; }
         openFile(file.dataUrl, file.name);
     });
     return div;
@@ -693,8 +704,11 @@ function createNoteCard(note, folderPath){
         <i class="fas fa-star card-fav-indicator${note.favourite ? '' : ' card-fav-hidden'}"></i>
     `;
     let pressTimer = null;
+    let longPressTriggered = false;
     const startPress = () => {
+        longPressTriggered = false;
         pressTimer = setTimeout(() => {
+            longPressTriggered = true;
             pressTimer = null;
             div.classList.add('card-long-press');
             setTimeout(() => div.classList.remove('card-long-press'), 300);
@@ -727,9 +741,7 @@ function createNoteCard(note, folderPath){
     div.addEventListener('mouseup', cancelPress);
     div.addEventListener('mouseleave', cancelPress);
     div.addEventListener('click', () => {
-        if (pressTimer === null) return;
-        clearTimeout(pressTimer);
-        pressTimer = null;
+        if (longPressTriggered) { longPressTriggered = false; return; }
         openNote({...note, folder:folderPath});
     });
     return div;
