@@ -591,6 +591,47 @@ function getFileSizeLabel(dataUrl) {
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
+// ── Context Menu ──
+function showCardContextMenu({ title, isFav, onFav, onRename, onDelete }) {
+    const existing = document.getElementById('ctxMenuOverlay');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'ctxMenuOverlay';
+    overlay.className = 'ctx-menu-overlay';
+    const menu = document.createElement('div');
+    menu.className = 'ctx-menu';
+    menu.innerHTML = `
+        <div class="ctx-menu-handle"></div>
+        <div class="ctx-menu-title">${title}</div>
+        <div class="ctx-menu-item" id="ctxFav">
+            <div class="ctx-menu-item-icon ctx-icon-fav"><i class="fas fa-star"></i></div>
+            <span class="ctx-menu-item-label">${isFav ? 'Remove Favourite' : 'Add to Favourites'}</span>
+        </div>
+        <div class="ctx-menu-divider"></div>
+        <div class="ctx-menu-item" id="ctxRename">
+            <div class="ctx-menu-item-icon ctx-icon-rename"><i class="fas fa-edit"></i></div>
+            <span class="ctx-menu-item-label">Rename</span>
+        </div>
+        <div class="ctx-menu-divider"></div>
+        <div class="ctx-menu-item" id="ctxDelete">
+            <div class="ctx-menu-item-icon ctx-icon-delete"><i class="fas fa-trash"></i></div>
+            <span class="ctx-menu-item-label danger">Delete</span>
+        </div>
+    `;
+    const close = () => {
+        overlay.style.opacity = '0';
+        menu.style.transform = 'translateY(100%)';
+        menu.style.transition = 'transform 0.2s ease';
+        setTimeout(() => overlay.remove(), 200);
+    };
+    overlay.appendChild(menu);
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.getElementById('ctxFav').addEventListener('click', () => { close(); onFav(); });
+    document.getElementById('ctxRename').addEventListener('click', () => { close(); onRename(); });
+    document.getElementById('ctxDelete').addEventListener('click', () => { close(); onDelete(); });
+}
+
 function createFileCard(file, folderPath){
     const iconClass = getFileIcon(file.name);
     const div = document.createElement('div');
@@ -602,37 +643,51 @@ function createFileCard(file, folderPath){
             <div class="card-filename" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
             ${sizeLabel ? `<div class="card-meta">${sizeLabel}</div>` : ''}
         </div>
-        <div class="card-buttons">
-            <button class="fav-file-btn${file.favourite ? ' fav-active' : ''}" title="Favourite"><i class="fas fa-star"></i></button>
-            <button class="rename-file-btn" title="Rename"><i class="fas fa-edit"></i></button>
-            <button class="delete-file-btn" title="Delete"><i class="fas fa-trash"></i></button>
-        </div>
+        <i class="fas fa-star card-fav-indicator${file.favourite ? '' : ' card-fav-hidden'}"></i>
     `;
+    let pressTimer = null;
+    const startPress = () => {
+        pressTimer = setTimeout(() => {
+            pressTimer = null;
+            div.classList.add('card-long-press');
+            setTimeout(() => div.classList.remove('card-long-press'), 300);
+            if (window.navigator?.vibrate) window.navigator.vibrate(18);
+            showCardContextMenu({
+                title: file.name,
+                isFav: !!file.favourite,
+                onFav: () => {
+                    const files = allFiles[folderPath];
+                    if (!files) return;
+                    const f = files.find(x => x.name === file.name);
+                    if (f) { f.favourite = !f.favourite; file.favourite = f.favourite; }
+                    const ind = div.querySelector('.card-fav-indicator');
+                    if (ind) ind.classList.toggle('card-fav-hidden', !file.favourite);
+                    saveAllFilesToDB();
+                    updateStats();
+                    render();
+                    showToast(file.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
+                },
+                onRename: () => showPromptModal('Rename file:', file.name, (newName) => { if(newName?.trim()) renameFileInFolder(folderPath, file.name, newName.trim()); }),
+                onDelete: () => deleteFileFromFolder(folderPath, file.name),
+            });
+        }, 500);
+    };
+    const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
+    div.addEventListener('touchstart', startPress, { passive: true });
+    div.addEventListener('touchend', cancelPress, { passive: true });
+    div.addEventListener('touchmove', cancelPress, { passive: true });
+    div.addEventListener('mousedown', startPress);
+    div.addEventListener('mouseup', cancelPress);
+    div.addEventListener('mouseleave', cancelPress);
     let _touchCount = 0;
     div.addEventListener('touchstart', (e) => { _touchCount = e.touches.length; }, { passive: true });
-    div.addEventListener('click', (e)=>{
-        if(_touchCount > 1) { _touchCount = 0; return; }
+    div.addEventListener('click', (e) => {
+        if (_touchCount > 1) { _touchCount = 0; return; }
         _touchCount = 0;
-        if(e.target.closest('.rename-file-btn') || e.target.closest('.delete-file-btn') || e.target.closest('.fav-file-btn')) return;
+        if (pressTimer === null) return;
+        clearTimeout(pressTimer);
+        pressTimer = null;
         openFile(file.dataUrl, file.name);
-    });
-    div.querySelector('.fav-file-btn').addEventListener('click', (e)=>{
-        e.stopPropagation();
-        const files = allFiles[folderPath];
-        if (!files) return;
-        const f = files.find(x => x.name === file.name);
-        if (f) { f.favourite = !f.favourite; file.favourite = f.favourite; }
-        div.querySelector('.fav-file-btn').classList.toggle('fav-active', !!file.favourite);
-        saveAllFilesToDB();
-        showToast(file.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
-    });
-    div.querySelector('.rename-file-btn').addEventListener('click', (e)=>{
-        e.stopPropagation();
-        showPromptModal('Rename file:', file.name, (newName) => { if(newName?.trim()) renameFileInFolder(folderPath, file.name, newName.trim()); });
-    });
-    div.querySelector('.delete-file-btn').addEventListener('click', (e)=>{
-        e.stopPropagation();
-        deleteFileFromFolder(folderPath, file.name);
     });
     return div;
 }
@@ -642,34 +697,50 @@ function createNoteCard(note, folderPath){
     div.className = 'card note-card';
     div.innerHTML = `
         <div class="card-icon"><i class="fas fa-sticky-note"></i></div>
-        <div class="card-filename" title="${escapeHtml(note.title)}">${escapeHtml(note.title)}</div>
-        <div class="card-buttons">
-            <button class="fav-note-btn${note.favourite ? ' fav-active' : ''}" title="Favourite"><i class="fas fa-star"></i></button>
-            <button class="rename-note-btn" title="Rename Note"><i class="fas fa-edit"></i></button>
-            <button class="delete-note-btn" title="Delete Note"><i class="fas fa-trash"></i></button>
+        <div class="card-info">
+            <div class="card-filename" title="${escapeHtml(note.title)}">${escapeHtml(note.title)}</div>
         </div>
+        <i class="fas fa-star card-fav-indicator${note.favourite ? '' : ' card-fav-hidden'}"></i>
     `;
-    div.addEventListener('click', (e)=>{
-        if(e.target.closest('.rename-note-btn') || e.target.closest('.delete-note-btn') || e.target.closest('.fav-note-btn')) return;
+    let pressTimer = null;
+    const startPress = () => {
+        pressTimer = setTimeout(() => {
+            pressTimer = null;
+            div.classList.add('card-long-press');
+            setTimeout(() => div.classList.remove('card-long-press'), 300);
+            if (window.navigator?.vibrate) window.navigator.vibrate(18);
+            showCardContextMenu({
+                title: note.title,
+                isFav: !!note.favourite,
+                onFav: () => {
+                    const notes = allNotes[folderPath];
+                    if (!notes) return;
+                    const n = notes.find(x => x.id === note.id);
+                    if (n) { n.favourite = !n.favourite; note.favourite = n.favourite; }
+                    const ind = div.querySelector('.card-fav-indicator');
+                    if (ind) ind.classList.toggle('card-fav-hidden', !note.favourite);
+                    saveAllNotesToDB();
+                    updateStats();
+                    render();
+                    showToast(note.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
+                },
+                onRename: () => showPromptModal('Rename note:', note.title, (newTitle) => { if(newTitle?.trim()) renameNote(folderPath, note.id, newTitle.trim()); }),
+                onDelete: () => showConfirmModal(`Delete note "<b>${note.title}</b>"?`, (confirmed) => { if(confirmed) deleteNoteFromFolder(folderPath, note.id); }),
+            });
+        }, 500);
+    };
+    const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
+    div.addEventListener('touchstart', startPress, { passive: true });
+    div.addEventListener('touchend', cancelPress, { passive: true });
+    div.addEventListener('touchmove', cancelPress, { passive: true });
+    div.addEventListener('mousedown', startPress);
+    div.addEventListener('mouseup', cancelPress);
+    div.addEventListener('mouseleave', cancelPress);
+    div.addEventListener('click', () => {
+        if (pressTimer === null) return;
+        clearTimeout(pressTimer);
+        pressTimer = null;
         openNote({...note, folder:folderPath});
-    });
-    div.querySelector('.fav-note-btn').addEventListener('click', (e)=>{
-        e.stopPropagation();
-        const notes = allNotes[folderPath];
-        if (!notes) return;
-        const n = notes.find(x => x.id === note.id);
-        if (n) { n.favourite = !n.favourite; note.favourite = n.favourite; }
-        div.querySelector('.fav-note-btn').classList.toggle('fav-active', !!note.favourite);
-        saveAllNotesToDB();
-        showToast(note.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
-    });
-    div.querySelector('.rename-note-btn').addEventListener('click', (e)=>{
-        e.stopPropagation();
-        showPromptModal('Rename note:', note.title, (newTitle) => { if(newTitle?.trim()) renameNote(folderPath, note.id, newTitle.trim()); });
-    });
-    div.querySelector('.delete-note-btn').addEventListener('click', (e)=>{
-        e.stopPropagation();
-        showConfirmModal(`Delete note "<b>${note.title}</b>"?`, (confirmed) => { if(confirmed) deleteNoteFromFolder(folderPath, note.id); });
     });
     return div;
 }
@@ -855,12 +926,9 @@ function render(){
             const path = currentPath.join('/');
             if(files.length) files.forEach(f=>document.getElementById('content').appendChild(createFileCard(f,path)));
             else {
-               
-const dz = document.createElement('div');
-dz.className = 'empty-state';
-dz.innerHTML = `<i class="fas fa-cloud-upload-alt"></i><p>No files here yet</p>`;
-document.getElementById('content').appendChild(dz);
-
+                const dz = document.createElement('div');
+                dz.className = 'empty-state';
+                dz.innerHTML = `<i class="fas fa-cloud-upload-alt"></i><p>No files here yet</p>`;
                 document.getElementById('content').appendChild(dz);
             }
         } else {
