@@ -1062,13 +1062,12 @@ font-size: 1.35rem;
     color: var(--text-primary);
     display: flex; align-items: center; gap: 8px;
 }
-.fav-view-title i { color: #
+.fav-view-title i { color: #f43f5e; }
 .fav-view-list {
     flex: 1;
     overflow-y: auto;
     padding: 10px 14px 30px;
 }
-
 .fav-section-title {
     display: flex; align-items: center; gap: 8px;
     font-size: 0.7rem; font-weight: 700;
