@@ -1784,14 +1784,14 @@ text-overflow: ellipsis;
 .dept-info     { display: none; }
 
 
-.dept-card[data-dept="REMELT"]    .dept-pill-bg { background: linear-gradient(100deg, #2656d6, #4a82f8); } 
-.dept-card[data-dept="CASTER"]    .dept-pill-bg { background: linear-gradient(100deg, #1a8c68, #28b88a); } 
-.dept-card[data-dept="HRM"]       .dept-pill-bg { background: linear-gradient(100deg, #7025c0, #9c48e8); } 
-.dept-card[data-dept="CRM"]       .dept-pill-bg { background: linear-gradient(100deg, #b82272, #d83898); } 
-.dept-card[data-dept="ANNEALING"] .dept-pill-bg { background: linear-gradient(100deg, #b85a18, #d87a30); } 
-.dept-card[data-dept="TLL"]       .dept-pill-bg { background: linear-gradient(100deg, #b89010, #d4ac28); } 
-.dept-card[data-dept="SLITTER"]   .dept-pill-bg { background: linear-gradient(100deg, #1a7a50, #229060); } 
-.dept-card[data-dept="UTILITY"]   .dept-pill-bg { background: linear-gradient(100deg, #1c40c0, #2a52d8); }
+.dept-card[data-dept="REMELT"]    .dept-pill-bg { background: linear-gradient(90deg, #1a3fb5 0%, #2f62e8 55%, #5a9aff 100%); } 
+.dept-card[data-dept="CASTER"]    .dept-pill-bg { background: linear-gradient(90deg, #0f6e5a 0%, #1a9e7e 55%, #2ecfa0 100%); } 
+.dept-card[data-dept="HRM"]       .dept-pill-bg { background: linear-gradient(90deg, #4a1090 0%, #7030c8 55%, #a060f0 100%); } 
+.dept-card[data-dept="CRM"]       .dept-pill-bg { background: linear-gradient(90deg, #8a1060 0%, #c02880 55%, #e050a8 100%); } 
+.dept-card[data-dept="ANNEALING"] .dept-pill-bg { background: linear-gradient(90deg, #7a3010 0%, #b85020 55%, #e07830 100%); } 
+.dept-card[data-dept="TLL"]       .dept-pill-bg { background: linear-gradient(90deg, #7a6008 0%, #b89018 55%, #d4b030 100%); } 
+.dept-card[data-dept="SLITTER"]   .dept-pill-bg { background: linear-gradient(90deg, #0f5c3a 0%, #1a8a58 55%, #28b878 100%); } 
+.dept-card[data-dept="UTILITY"]   .dept-pill-bg { background: linear-gradient(90deg, #1428a0 0%, #2040cc 55%, #3060e8 100%); }
 
 .dept-card .dept-pill-center-icon i { filter: drop-shadow(0 1px 4px rgba(0,0,0,0.55)); }
 
