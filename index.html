@@ -23,15 +23,15 @@
 <link rel="stylesheet" href="style.css?v=46">
 
 </head>
-<body style="background:#0e0e0e !important;">
+<body>
 
 
 <!-- SPLASH SCREEN -->
 
 <div id="splashScreen">
-  <div style="position: absolute; inset: 0; overflow: hidden; z-index: 0;">
-    <div style="position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, rgba(99,102,241,0.3), transparent); border-radius: 50%; top: -10%; left: -5%; animation: splashFloat1 6s ease-in-out infinite;"></div>
-    <div style="position: absolute; width: 250px; height: 250px; background: radial-gradient(circle, rgba(139,92,246,0.25), transparent); border-radius: 50%; bottom: 5%; right: -10%; animation: splashFloat2 8s ease-in-out infinite;"></div>
+  <div class="splash-bg-layer">
+    <div class="splash-orb splash-orb-1"></div>
+    <div class="splash-orb splash-orb-2"></div>
   </div>
   <div class="splash-container">
     <div class="splash-icon-wrapper">
@@ -81,6 +81,11 @@
       <button id="pdfTabBtn" class="type-btn active"><i class="fas fa-file-pdf"></i> Files</button>
       <button id="notesTabBtn" class="type-btn"><i class="fas fa-sticky-note"></i> Notes</button>
     </div>
+    <div class="sort-bar" id="sortBar">
+      <button class="sort-btn active" id="sortNameBtn" onclick="setSortMode('name')"><i class="fas fa-arrow-down-a-z"></i> A–Z</button>
+      <button class="sort-btn" id="sortNewestBtn" onclick="setSortMode('newest')"><i class="fas fa-clock"></i> Newest</button>
+      <button class="sort-btn" id="sortLargestBtn" onclick="setSortMode('largest')"><i class="fas fa-weight-hanging"></i> Largest</button>
+    </div>
     <div class="search-container">
       <i class="fas fa-search"></i>
       <input type="text" id="searchInput" placeholder="Search documents..." autocomplete="off">
@@ -106,7 +111,7 @@
     
  <div class="stat-divider"></div>
 
-<div style="display:none;"><span id="favCount">0</span></div>
+<div class="fav-count-hidden"><span id="favCount">0</span></div>
 
 <button id="favStatItem" class="fav-pill-btn">
   FAVORITE
@@ -251,7 +256,7 @@
         <div class="settings-item-text"><span class="settings-item-title">Erase All Data</span><span class="settings-item-sub">Permanently delete everything in DOCMAN</span></div>
       </button>
     </div>
-    <input type="file" id="importFileInput" accept=".json" style="display:none">
+    <input type="file" id="importFileInput" accept=".json" class="input-hidden">
   </div>
 </div>
 
@@ -415,22 +420,22 @@
     <div class="settings-group-title">Overview</div>
     <div class="stats-grid-card">
       <div class="stats-grid-item">
-        <div class="stats-grid-icon" style="background:linear-gradient(135deg,#3b82f6,#2563eb)"><i class="fas fa-file"></i></div>
+        <div class="stats-grid-icon stats-icon-files"><i class="fas fa-file"></i></div>
         <div class="stats-grid-val" id="statTotalFiles">—</div>
         <div class="stats-grid-label">Total Files</div>
       </div>
       <div class="stats-grid-item">
-        <div class="stats-grid-icon" style="background:linear-gradient(135deg,#fbbf24,#d97706)"><i class="fas fa-sticky-note"></i></div>
+        <div class="stats-grid-icon stats-icon-notes"><i class="fas fa-sticky-note"></i></div>
         <div class="stats-grid-val" id="statTotalNotes">—</div>
         <div class="stats-grid-label">Total Notes</div>
       </div>
       <div class="stats-grid-item">
-        <div class="stats-grid-icon" style="background:linear-gradient(135deg,#10b981,#059669)"><i class="fas fa-folder"></i></div>
+        <div class="stats-grid-icon stats-icon-folders"><i class="fas fa-folder"></i></div>
         <div class="stats-grid-val" id="statTotalFolders">—</div>
         <div class="stats-grid-label">Total Folders</div>
       </div>
       <div class="stats-grid-item">
-        <div class="stats-grid-icon" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed)"><i class="fas fa-industry"></i></div>
+        <div class="stats-grid-icon stats-icon-depts"><i class="fas fa-industry"></i></div>
         <div class="stats-grid-val" id="statTotalDepts">—</div>
         <div class="stats-grid-label">Departments</div>
       </div>
@@ -438,11 +443,11 @@
     <div class="settings-group-title">Largest Items</div>
     <div class="settings-card">
       <div class="settings-stat-detail-row">
-        <div class="settings-item-icon settings-icon-pdf" style="width:36px;height:36px;font-size:0.85rem;flex-shrink:0"><i class="fas fa-file-alt"></i></div>
+        <div class="settings-item-icon settings-icon-pdf settings-icon-sm"><i class="fas fa-file-alt"></i></div>
         <div class="settings-item-text"><span class="settings-item-title">Largest File</span><span class="settings-item-sub" id="statLargestFile">—</span></div>
       </div>
-      <div class="settings-stat-detail-row" style="border-bottom:none">
-        <div class="settings-item-icon settings-icon-departments" style="width:36px;height:36px;font-size:0.85rem;flex-shrink:0"><i class="fas fa-folder-open"></i></div>
+      <div class="settings-stat-detail-row settings-row-no-border">
+        <div class="settings-item-icon settings-icon-departments settings-icon-sm"><i class="fas fa-folder-open"></i></div>
         <div class="settings-item-text"><span class="settings-item-title">Largest Folder</span><span class="settings-item-sub" id="statLargestFolder">—</span></div>
       </div>
     </div>
@@ -506,7 +511,7 @@
       <div class="about-info-row"><span>Version</span><b>1.0.0</b></div>
       <div class="about-info-row"><span>Database Version</span><b>9</b></div>
       <div class="about-info-row"><span>Developer</span><b>𝓐𝒷𝒾𝓈𝒽 ℛ𝒶𝒿𝒶𝓃</b></div>
-      <div class="about-info-row" style="border-bottom:none"><span>Storage Engine</span><b>IndexedDB / Device Storage</b></div>
+      <div class="about-info-row about-info-row-last"><span>Storage Engine</span><b>IndexedDB / Device Storage</b></div>
     </div>
     <div class="settings-group-title">Actions</div>
     <div class="settings-card">
@@ -527,9 +532,9 @@
 
 <div id="noteModal" class="modal">
   <div class="modal-content">
-    <div class="modal-body" style="padding-top:20px;">
-      <input type="text" id="noteTitle" placeholder="Note title..." style="margin-bottom:14px; font-size:1.1rem; font-weight:600; background:rgba(255,255,255,0.1); border:1.5px solid rgba(255,255,255,0.25); color:#f8fafc;" autocomplete="off">
-      <textarea id="noteContent" placeholder="Write your note here..." style="background:rgba(255,255,255,0.07); border:1.5px solid rgba(255,255,255,0.18); color:#e2e8f0;"></textarea>
+    <div class="modal-body modal-body-note">
+      <input type="text" id="noteTitle" placeholder="Note title..." class="note-title-input" autocomplete="off">
+      <textarea id="noteContent" placeholder="Write your note here..." class="note-content-input"></textarea>
     </div>
     <div class="modal-footer"><button onclick="closeNoteModal()">Cancel</button><button id="saveNoteBtn">Save Note</button></div>
   </div>
