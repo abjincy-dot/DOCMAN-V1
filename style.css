@@ -2331,10 +2331,10 @@ transform: translateY(0px);
 box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25), 0 3px 10px rgba(0, 0, 0, 0.15) !important; 
 }
 
-.card:active { 
-transform: translateY(3px) !important; 
-box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25), 0 1px 4px rgba(0, 0, 0, 0.1) !important; 
+.card:active {
+    box-shadow: 0 1px 0 rgba(0,0,0,0.25), 0 1px 4px rgba(0,0,0,0.1) !important;
 }
+
 
 #uploadBtn, #newNoteBtn { 
 transform: translateY(-2px); 
