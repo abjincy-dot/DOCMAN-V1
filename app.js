@@ -40,6 +40,7 @@ let currentPath = [];
 let isSearchMode = false;
 let currentActiveTab = 'pdfs';
 let editingNoteId = null;
+let currentSortMode = 'name'; // 'name' | 'newest' | 'largest'
 
 function showToast(msg, isErr = false) {
     const toast = document.getElementById('toast');
@@ -320,106 +321,6 @@ function initDB() {
     });
 }
 
-function createFurnace1Logs() {
-    return {
-        "Temperature Records F1": {},
-        "Pressure Data F1": {},
-        "Quality Check F1": {},
-        "Maintenance Log F1": {},
-        "Production Report F1": {},
-        "Safety Checklist F1": {},
-        "Morning Shift F1": {},
-        "Evening Shift F1": {},
-        "Night Shift F1": {},
-        "Raw Material F1": {},
-        "Finished Goods F1": {},
-        "Defect Report F1": {},
-        "Efficiency Data F1": {},
-        "Downtime Records F1": {},
-        "Operator Notes F1": {},
-        "Supervisor Log F1": {},
-        "Weekly Summary F1": {},
-        "Monthly Report F1": {},
-        "Inspection Log F1": {},
-        "Calibration Data F1": {}
-    };
-}
-
-function createFurnace2Logs() {
-    return {
-        "Temp Records F2": {},
-        "Pressure Logs F2": {},
-        "Quality Data F2": {},
-        "Maintenance Records F2": {},
-        "Production Stats F2": {},
-        "Safety Reports F2": {},
-        "Shift A F2": {},
-        "Shift B F2": {},
-        "Raw Material Log F2": {},
-        "Output Data F2": {},
-        "Defects F2": {},
-        "Performance F2": {},
-        "Downtime F2": {},
-        "Operator Log F2": {},
-        "Supervisor Notes F2": {},
-        "Weekly Report F2": {},
-        "Monthly Data F2": {},
-        "Annual Report F2": {},
-        "Inspection F2": {},
-        "Calibration F2": {}
-    };
-}
-
-function createFurnace3Logs() {
-    return {
-        "Temperature F3": {},
-        "Pressure F3": {},
-        "Quality F3": {},
-        "Maintenance F3": {},
-        "Production F3": {},
-        "Safety F3": {},
-        "Shift-1 F3": {},
-        "Shift-2 F3": {},
-        "Raw F3": {},
-        "Finished F3": {},
-        "Defect F3": {},
-        "Efficiency F3": {},
-        "Downtime F3": {},
-        "Operator F3": {},
-        "Supervisor F3": {},
-        "Weekly F3": {},
-        "Monthly F3": {},
-        "Annual F3": {},
-        "Inspect F3": {},
-        "Calibrate F3": {}
-    };
-}
-
-function createFurnace4Logs() {
-    return {
-        "Temperature Log F4": {},
-        "Pressure Log F4": {},
-        "Quality Log F4": {},
-        "Maintenance Log F4": {},
-        "Production Log F4": {},
-        "Safety Log F4": {},
-        "Shift Morning F4": {},
-        "Shift Evening F4": {},
-        "Shift Night F4": {},
-        "Raw Material F4": {},
-        "Finished Product F4": {},
-        "Defect Tracking F4": {},
-        "Efficiency F4": {},
-        "Downtime F4": {},
-        "Operator Record F4": {},
-        "Supervisor Record F4": {},
-        "Weekly Record F4": {},
-        "Monthly Record F4": {},
-        "Inspection Record F4": {},
-        "Calibration Record F4": {}
-    };
-}
-
 async function loadFromIndexedDB() {
     const folderReq = db.transaction('folderStructure','readonly').objectStore('folderStructure').get('structure');
     folderReq.onsuccess = ()=>{
@@ -427,10 +328,10 @@ async function loadFromIndexedDB() {
         else {
             fileSystem = {
                 "REMELT": {
-                    "FURNACE 1": createFurnace1Logs(), 
-                    "FURNACE 2": createFurnace2Logs(), 
-                    "FURNACE 3": createFurnace3Logs(),
-                    "FURNACE 4": createFurnace4Logs(), 
+                    "FURNACE 1": {"Temperature Records F1":{},"Pressure Data F1":{},"Quality Check F1":{},"Maintenance Log F1":{},"Production Report F1":{},"Safety Checklist F1":{},"Morning Shift F1":{},"Evening Shift F1":{},"Night Shift F1":{},"Raw Material F1":{},"Finished Goods F1":{},"Defect Report F1":{},"Efficiency Data F1":{},"Downtime Records F1":{},"Operator Notes F1":{},"Supervisor Log F1":{},"Weekly Summary F1":{},"Monthly Report F1":{},"Inspection Log F1":{},"Calibration Data F1":{}},
+                    "FURNACE 2": {"Temp Records F2":{},"Pressure Logs F2":{},"Quality Data F2":{},"Maintenance Records F2":{},"Production Stats F2":{},"Safety Reports F2":{},"Shift A F2":{},"Shift B F2":{},"Raw Material Log F2":{},"Output Data F2":{},"Defects F2":{},"Performance F2":{},"Downtime F2":{},"Operator Log F2":{},"Supervisor Notes F2":{},"Weekly Report F2":{},"Monthly Data F2":{},"Annual Report F2":{},"Inspection F2":{},"Calibration F2":{}},
+                    "FURNACE 3": {"Temperature F3":{},"Pressure F3":{},"Quality F3":{},"Maintenance F3":{},"Production F3":{},"Safety F3":{},"Shift-1 F3":{},"Shift-2 F3":{},"Raw F3":{},"Finished F3":{},"Defect F3":{},"Efficiency F3":{},"Downtime F3":{},"Operator F3":{},"Supervisor F3":{},"Weekly F3":{},"Monthly F3":{},"Annual F3":{},"Inspect F3":{},"Calibrate F3":{}},
+                    "FURNACE 4": {"Temperature Log F4":{},"Pressure Log F4":{},"Quality Log F4":{},"Maintenance Log F4":{},"Production Log F4":{},"Safety Log F4":{},"Shift Morning F4":{},"Shift Evening F4":{},"Shift Night F4":{},"Raw Material F4":{},"Finished Product F4":{},"Defect Tracking F4":{},"Efficiency F4":{},"Downtime F4":{},"Operator Record F4":{},"Supervisor Record F4":{},"Weekly Record F4":{},"Monthly Record F4":{},"Inspection Record F4":{},"Calibration Record F4":{}},
                     "FURNACE 5": {}, 
                     "ACD": {}, 
                     "DBF": {}, 
@@ -755,6 +656,40 @@ function createCard(title, onClick, isFolder=false){
     return div;
 }
 
+function setSortMode(mode) {
+    currentSortMode = mode;
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    const map = { name: 'sortNameBtn', newest: 'sortNewestBtn', largest: 'sortLargestBtn' };
+    const btn = document.getElementById(map[mode]);
+    if (btn) btn.classList.add('active');
+    render();
+}
+
+function sortedFiles(files) {
+    const arr = [...files];
+    if (currentSortMode === 'name') {
+        arr.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    } else if (currentSortMode === 'newest') {
+        // Use dataUrl length as proxy for recency if no timestamp; files added later are appended so reverse index is newest
+        arr.reverse();
+    } else if (currentSortMode === 'largest') {
+        arr.sort((a, b) => (b.dataUrl?.length || 0) - (a.dataUrl?.length || 0));
+    }
+    return arr;
+}
+
+function sortedNotes(notes) {
+    const arr = [...notes];
+    if (currentSortMode === 'name') {
+        arr.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
+    } else if (currentSortMode === 'newest') {
+        arr.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+    } else if (currentSortMode === 'largest') {
+        arr.sort((a, b) => (b.content?.length || 0) - (a.content?.length || 0));
+    }
+    return arr;
+}
+
 function render(){
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
     if(query){
@@ -773,6 +708,8 @@ function render(){
         document.getElementById('departmentsSection').innerHTML = '';
         document.getElementById('breadcrumb').innerHTML = '';
         document.querySelector('.type-selector').style.display = 'none';
+        const sortBar = document.getElementById('sortBar');
+        if (sortBar) sortBar.classList.remove('sort-bar-visible');
         if(!results.length) contentDiv.innerHTML = '<div class="empty-state"><i class="fas fa-search"></i><p>No results found.</p></div>';
         else results.forEach(item => { if(item.type==='file') contentDiv.appendChild(createFileCard(item, item.folder)); else contentDiv.appendChild(createNoteCard(item, item.folder)); });
         updateStats();
@@ -860,7 +797,9 @@ function render(){
     const hasSubfolders = Object.keys(folder).length>0;
     const isLeafFolder = !isRoot && !hasSubfolders;
     const typeSelector = document.querySelector('.type-selector');
+    const sortBar = document.getElementById('sortBar');
     if(typeSelector) typeSelector.style.display = isLeafFolder ? 'flex' : 'none';
+    if(sortBar) sortBar.classList.toggle('sort-bar-visible', isLeafFolder);
     if(isLeafFolder){
         if(currentActiveTab==='pdfs'){ document.getElementById('uploadBtn').classList.remove('hidden'); document.getElementById('newNoteBtn').classList.add('hidden'); }
         else { document.getElementById('uploadBtn').classList.add('hidden'); document.getElementById('newNoteBtn').classList.remove('hidden'); }
@@ -926,7 +865,7 @@ function render(){
         if(currentActiveTab==='pdfs'){
             const files = getFilesForCurrentFolder();
             const path = currentPath.join('/');
-            if(files.length) files.forEach(f=>document.getElementById('content').appendChild(createFileCard(f,path)));
+            if(files.length) sortedFiles(files).forEach(f=>document.getElementById('content').appendChild(createFileCard(f,path)));
             else {
                 const dz = document.createElement('div');
                 dz.className = 'empty-state';
@@ -936,7 +875,7 @@ function render(){
         } else {
             const notes = getNotesForCurrentFolder();
             const path = currentPath.join('/');
-            if(notes.length) notes.forEach(n=>document.getElementById('content').appendChild(createNoteCard(n,path)));
+            if(notes.length) sortedNotes(notes).forEach(n=>document.getElementById('content').appendChild(createNoteCard(n,path)));
             else document.getElementById('content').innerHTML += '<div class="empty-state empty-state-note"><i class="fas fa-sticky-note"></i><p>No notes yet. Click + New Note to add.</p></div>';
         }
     }
@@ -1466,6 +1405,7 @@ window.renameCurrentFolder = renameCurrentFolder;
 window.deleteCurrentFolder = deleteCurrentFolder;
 window.addNewFolder = addNewFolder;
 window.addNewDepartment = addNewDepartment;
+window.setSortMode = setSortMode;
 
 let pdfViewerDoc = null;
 let pdfPageHeights = [];
