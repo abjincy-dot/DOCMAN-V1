@@ -590,8 +590,7 @@ function createFileCard(file, folderPath){
         pressTimer = setTimeout(() => {
             longPressTriggered = true;
             pressTimer = null;
-            div.classList.add('card-long-press');
-            setTimeout(() => div.classList.remove('card-long-press'), 300);
+            
             haptic.longPress();
             showCardContextMenu({
                 title: file.name,
