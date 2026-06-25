@@ -364,7 +364,6 @@ async function loadFromIndexedDB() {
                     "A":{}, 
                     "B":{}, 
                     "C":{}, 
-                    "C":{}, 
                     "D":{}, 
                     "E":{}, 
                 },
