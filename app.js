@@ -54,51 +54,58 @@ function showToast(msg, isErr = false) {
 }
 
 
-function showPromptModal(message, defaultVal, callback) {
-    const existing = document.getElementById('customPrompt');
+/**
+ * Generic modal.
+ * type: 'prompt' | 'confirm'
+ * For prompt:  callback(stringValue) or callback(null) on cancel
+ * For confirm: callback(true) or callback(false) on cancel
+ */
+function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColor, callback }) {
+    const isPrompt = type === 'prompt';
+    const id = isPrompt ? 'customPrompt' : 'customConfirm';
+    const borderColor = isPrompt ? 'rgba(100,150,255,0.3)' : 'rgba(255,80,80,0.3)';
+    const resolvedOkLabel = okLabel || (isPrompt ? 'OK' : 'Delete');
+    const resolvedOkColor = okColor || (isPrompt
+        ? 'linear-gradient(135deg,#3b82f6,#8b5cf6)'
+        : 'linear-gradient(135deg,#ef4444,#dc2626)');
+
+    const existing = document.getElementById(id);
     if (existing) existing.remove();
+
     const overlay = document.createElement('div');
-    overlay.id = 'customPrompt';
+    overlay.id = id;
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px;';
     overlay.innerHTML = `
-        <div style="background:#1a1a1a;border:1px solid rgba(100,150,255,0.3);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-            <p style="color:#e2e8f0;font-size:0.95rem;font-weight:600;margin-bottom:16px;font-family:Inter,sans-serif;">${message}</p>
-            <input id="customPromptInput" type="text" value="${defaultVal || ''}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(100,150,255,0.4);background:rgba(255,255,255,0.06);color:#f8fafc;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;">
+        <div style="background:#1a1a1a;border:1px solid ${borderColor};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+            <p style="color:#e2e8f0;font-size:0.95rem;font-weight:600;margin-bottom:${isPrompt ? 16 : 24}px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
+            ${isPrompt ? `<input id="modalInput" type="text" value="${defaultVal}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(100,150,255,0.4);background:rgba(255,255,255,0.06);color:#f8fafc;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;">` : ''}
             <div style="display:flex;gap:12px;justify-content:flex-end;">
-                <button id="customPromptCancel" style="padding:10px 22px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
-                <button id="customPromptOk" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">OK</button>
+                <button id="modalCancel" style="padding:10px 22px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
+                <button id="modalOk" style="padding:10px 22px;border-radius:40px;border:none;background:${resolvedOkColor};color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">${resolvedOkLabel}</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
-    const input = document.getElementById('customPromptInput');
-    input.focus();
-    input.select();
-    const close = (val) => { overlay.remove(); if (val !== null) callback(val); };
-    document.getElementById('customPromptOk').onclick = () => close(input.value);
-    document.getElementById('customPromptCancel').onclick = () => close(null);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') close(input.value); if (e.key === 'Escape') close(null); });
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+
+    const input = overlay.querySelector('#modalInput');
+    if (input) { input.focus(); input.select(); }
+
+    const close = (val) => { overlay.remove(); callback(val); };
+
+    overlay.querySelector('#modalOk').onclick = () => close(isPrompt ? input.value : true);
+    overlay.querySelector('#modalCancel').onclick = () => close(isPrompt ? null : false);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(isPrompt ? null : false); });
+    if (input) input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') close(input.value);
+        if (e.key === 'Escape') close(null);
+    });
 }
 
+// Convenience wrappers — all existing call sites unchanged
+function showPromptModal(message, defaultVal, callback) {
+    showModal({ type: 'prompt', message, defaultVal, callback });
+}
 function showConfirmModal(message, callback) {
-    const existing = document.getElementById('customConfirm');
-    if (existing) existing.remove();
-    const overlay = document.createElement('div');
-    overlay.id = 'customConfirm';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px;';
-    overlay.innerHTML = `
-        <div style="background:#1a1a1a;border:1px solid rgba(255,80,80,0.3);border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-            <p style="color:#e2e8f0;font-size:0.95rem;font-weight:600;margin-bottom:24px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
-            <div style="display:flex;gap:12px;justify-content:flex-end;">
-                <button id="customConfirmCancel" style="padding:10px 22px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
-                <button id="customConfirmOk" style="padding:10px 22px;border-radius:40px;border:none;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">Delete</button>
-            </div>
-        </div>`;
-    document.body.appendChild(overlay);
-    const close = (val) => { overlay.remove(); callback(val); };
-    document.getElementById('customConfirmOk').onclick = () => close(true);
-    document.getElementById('customConfirmCancel').onclick = () => close(false);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+    showModal({ type: 'confirm', message, callback });
 }
 
 function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
