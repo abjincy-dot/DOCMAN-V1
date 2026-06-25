@@ -676,6 +676,23 @@ function createCard(title, onClick, isFolder=false){
     return div;
 }
 
+function showLoadingSkeleton() {
+    const contentDiv = document.getElementById('content');
+    if (!contentDiv) return;
+    let html = '<div class="skeleton-grid">';
+    for (let i = 0; i < 6; i++) {
+        html += `<div class="skeleton-card">
+            <div class="skeleton-icon shimmer"></div>
+            <div class="skeleton-lines">
+                <div class="skeleton-line skeleton-line-long shimmer"></div>
+                <div class="skeleton-line skeleton-line-short shimmer"></div>
+            </div>
+        </div>`;
+    }
+    html += '</div>';
+    contentDiv.innerHTML = html;
+}
+
 function render(){
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
     if(query){
@@ -795,8 +812,8 @@ function render(){
 
         const parentPath = currentPath.slice(0, -1);
         const pathHtml = `<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-home"></i> <span style="color:#3b82f6">Home</span></span>` +
-            parentPath.map((p,i) => `<span class="cf-sep"> / </span><span class="cf-part">${escapeHtml(p)}</span>`).join('') +
-            `<span class="cf-sep"> / </span>`;
+            parentPath.map((p,i) => `<span class="cf-sep"> / </span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})">${escapeHtml(p)}</span>`).join('') +
+            `<span class="cf-sep"> / </span><span class="cf-part cf-part-current">${escapeHtml(currentPath[currentPath.length-1])}</span>`;
         folderCardEl.innerHTML = `
             <div class="cf-path-row">${pathHtml}</div>
             <div class="cf-bottom-row">
@@ -1629,6 +1646,97 @@ document.addEventListener('DOMContentLoaded', async ()=>{
         });
     }
 
+    // Pinch-to-zoom & drag pan for image viewer
+    (function initImageViewerGestures() {
+        const body = document.querySelector('.image-viewer-body');
+        const img  = document.getElementById('viewerImage');
+        if (!body || !img) return;
+
+        let scale = 1, minScale = 1, maxScale = 5;
+        let originX = 0, originY = 0;          // translate offsets
+        let lastDist = 0;
+        let isDragging = false, dragStartX = 0, dragStartY = 0;
+        let lastOriginX = 0, lastOriginY = 0;
+
+        function applyTransform() {
+            img.style.transform = `scale(${scale}) translate(${originX}px, ${originY}px)`;
+            img.style.cursor = scale > 1 ? 'grab' : 'default';
+        }
+
+        function resetTransform() {
+            scale = 1; originX = 0; originY = 0;
+            img.style.transition = 'transform 0.2s ease';
+            applyTransform();
+            setTimeout(() => { img.style.transition = ''; }, 220);
+        }
+
+        // Reset when viewer opens
+        document.getElementById('closeImageViewer').addEventListener('click', resetTransform);
+        body.addEventListener('dblclick', () => { scale === 1 ? (scale = 2.5, applyTransform()) : resetTransform(); });
+
+        // Touch: pinch-to-zoom
+        body.addEventListener('touchstart', (e) => {
+            img.style.transition = '';
+            if (e.touches.length === 2) {
+                lastDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            } else if (e.touches.length === 1 && scale > 1) {
+                isDragging = true;
+                dragStartX = e.touches[0].clientX;
+                dragStartY = e.touches[0].clientY;
+                lastOriginX = originX;
+                lastOriginY = originY;
+            }
+        }, { passive: true });
+
+        body.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                const delta = dist / lastDist;
+                scale = Math.min(maxScale, Math.max(minScale, scale * delta));
+                lastDist = dist;
+                applyTransform();
+            } else if (isDragging && e.touches.length === 1) {
+                e.preventDefault();
+                originX = lastOriginX + (e.touches[0].clientX - dragStartX) / scale;
+                originY = lastOriginY + (e.touches[0].clientY - dragStartY) / scale;
+                applyTransform();
+            }
+        }, { passive: false });
+
+        body.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) isDragging = false;
+            if (scale < 1.05) resetTransform();
+        });
+
+        // Mouse drag (desktop)
+        body.addEventListener('mousedown', (e) => {
+            if (scale > 1) {
+                isDragging = true;
+                dragStartX = e.clientX; dragStartY = e.clientY;
+                lastOriginX = originX; lastOriginY = originY;
+                img.style.cursor = 'grabbing';
+            }
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            originX = lastOriginX + (e.clientX - dragStartX) / scale;
+            originY = lastOriginY + (e.clientY - dragStartY) / scale;
+            applyTransform();
+        });
+        window.addEventListener('mouseup', () => { isDragging = false; if (scale > 1) img.style.cursor = 'grab'; });
+
+        // Reset on close
+        const origClose = window.closeImageViewer;
+        window.closeImageViewer = function() { origClose(); resetTransform(); };
+    })();
+
     const closePdfBtn = document.getElementById('closePdfViewer');
     if(closePdfBtn) closePdfBtn.onclick = closePdfViewer;
     
@@ -1642,6 +1750,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     document.getElementById('homeBtn').addEventListener('click', goHome);
     document.getElementById('uploadBtn').addEventListener('click', triggerUpload);
     initSettingsPage();
+    showLoadingSkeleton();
     await initDB();
     await loadFromIndexedDB();
     attachPressEffects();
