@@ -1,4 +1,5 @@
 
+
 const APP_VERSION = '1.0.0';
 const CACHE = 'docman-v74'; // bump this on each deploy
 const ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.json', './Images/settings-tray.png', './Images/settings-neon.png'];
