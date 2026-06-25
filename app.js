@@ -43,6 +43,21 @@ let isSearchMode = false;
 let currentActiveTab = 'pdfs';
 let editingNoteId = null;
 
+function showSkeletonCards() {
+    const content = document.getElementById('content');
+    if (!content) return;
+    let html = '';
+    for (let i = 0; i < 5; i++) {
+        html += `<div class="skeleton-card"><div class="skeleton-icon"></div><div class="skeleton-lines"><div class="skeleton-line skeleton-line-a"></div><div class="skeleton-line skeleton-line-b"></div></div></div>`;
+    }
+    content.innerHTML = html;
+}
+function hideSkeletonCards() {
+    const content = document.getElementById('content');
+    if (!content) return;
+    content.querySelectorAll('.skeleton-card').forEach(el => el.remove());
+}
+
 function showToast(msg, isErr = false) {
     const toast = document.getElementById('toast');
     toast.querySelector('span').textContent = msg;
@@ -275,6 +290,7 @@ function openImageViewer(imageUrl, fileName) {
     viewerImage.src = imageUrl;
     viewerImage.alt = fileName;
     viewer.classList.remove('hidden');
+    initImageViewerGestures(viewerImage);
 }
 
 function closeImageViewer() {
@@ -282,9 +298,112 @@ function closeImageViewer() {
     const viewerImage = document.getElementById('viewerImage');
     viewer.classList.add('hidden');
     viewerImage.src = '';
+    viewerImage.style.transform = '';
+    viewerImage.style.cursor = '';
+    viewerImage._imgGestureCleanup && viewerImage._imgGestureCleanup();
 }
 
-function openFile(dataUrl, fileName) {
+function initImageViewerGestures(img) {
+    // clean up previous listeners if any
+    if (img._imgGestureCleanup) img._imgGestureCleanup();
+
+    let scale = 1, minScale = 0.5, maxScale = 6;
+    let translateX = 0, translateY = 0;
+    let isPanning = false, panStartX = 0, panStartY = 0, panOriginX = 0, panOriginY = 0;
+    let lastDist = null;
+    let lastMidX = 0, lastMidY = 0;
+
+    function applyTransform() {
+        img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+        img.style.cursor = scale > 1 ? 'grab' : '';
+    }
+
+    function dist(t) {
+        return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    }
+
+    function mid(t) {
+        return { x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 };
+    }
+
+    function onTouchStart(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            lastDist = dist(e.touches);
+            const m = mid(e.touches);
+            lastMidX = m.x; lastMidY = m.y;
+        } else if (e.touches.length === 1 && scale > 1) {
+            isPanning = true;
+            panStartX = e.touches[0].clientX;
+            panStartY = e.touches[0].clientY;
+            panOriginX = translateX;
+            panOriginY = translateY;
+        }
+    }
+
+    function onTouchMove(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const newDist = dist(e.touches);
+            const m = mid(e.touches);
+            if (lastDist !== null) {
+                const delta = newDist / lastDist;
+                scale = Math.min(maxScale, Math.max(minScale, scale * delta));
+                translateX += (m.x - lastMidX);
+                translateY += (m.y - lastMidY);
+            }
+            lastDist = newDist;
+            lastMidX = m.x; lastMidY = m.y;
+            applyTransform();
+        } else if (e.touches.length === 1 && isPanning) {
+            e.preventDefault();
+            translateX = panOriginX + (e.touches[0].clientX - panStartX);
+            translateY = panOriginY + (e.touches[0].clientY - panStartY);
+            applyTransform();
+        }
+    }
+
+    function onTouchEnd(e) {
+        if (e.touches.length < 2) lastDist = null;
+        if (e.touches.length === 0) {
+            isPanning = false;
+            if (scale <= 1) { scale = 1; translateX = 0; translateY = 0; applyTransform(); }
+        }
+    }
+
+    function onDblTap(e) {
+        e.preventDefault();
+        if (scale > 1) { scale = 1; translateX = 0; translateY = 0; }
+        else { scale = 2.5; }
+        applyTransform();
+    }
+
+    // Mouse wheel zoom for desktop
+    function onWheel(e) {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.12 : 0.89;
+        scale = Math.min(maxScale, Math.max(minScale, scale * factor));
+        if (scale <= 1) { scale = 1; translateX = 0; translateY = 0; }
+        applyTransform();
+    }
+
+    img.addEventListener('touchstart', onTouchStart, { passive: false });
+    img.addEventListener('touchmove', onTouchMove, { passive: false });
+    img.addEventListener('touchend', onTouchEnd);
+    img.addEventListener('dblclick', onDblTap);
+    img.addEventListener('wheel', onWheel, { passive: false });
+
+    img._imgGestureCleanup = () => {
+        img.removeEventListener('touchstart', onTouchStart);
+        img.removeEventListener('touchmove', onTouchMove);
+        img.removeEventListener('touchend', onTouchEnd);
+        img.removeEventListener('dblclick', onDblTap);
+        img.removeEventListener('wheel', onWheel);
+        img._imgGestureCleanup = null;
+    };
+}
+
+
     trackRecentFile(fileName);
     const fileType = getFileType(fileName);
     if (fileType === 'image') {
@@ -800,7 +919,7 @@ function render(){
         folderCardEl.innerHTML = `
             <div class="cf-path-row">${pathHtml}</div>
             <div class="cf-bottom-row">
-                <div class="cf-folder-name">${escapeHtml(currentPath[currentPath.length-1])}</div>
+                <div class="cf-folder-name"><i class="fas fa-map-marker-alt cf-loc-icon"></i> ${escapeHtml(currentPath[currentPath.length-1])}</div>
                 <div class="cf-folder-icon"><i class="fas fa-folder"></i><i class="fas fa-star cf-star"></i></div>
             </div>`;
         document.getElementById('content').appendChild(folderCardEl);
@@ -1642,8 +1761,10 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     document.getElementById('homeBtn').addEventListener('click', goHome);
     document.getElementById('uploadBtn').addEventListener('click', triggerUpload);
     initSettingsPage();
+    showSkeletonCards();
     await initDB();
     await loadFromIndexedDB();
+    hideSkeletonCards();
     attachPressEffects();
 
     let resizeTimeout;
