@@ -1805,6 +1805,51 @@ flex-direction: column;
 gap: 8px; 
 }
 
+/* ── Skeleton loading cards ── */
+.skeleton-card {
+display: flex;
+align-items: center;
+gap: 12px;
+padding: 12px 14px;
+background: rgba(12,28,48,0.85);
+border-radius: var(--radius-md);
+overflow: hidden;
+position: relative;
+min-height: 52px;
+}
+.skeleton-card::after {
+content: '';
+position: absolute;
+inset: 0;
+background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%);
+background-size: 200% 100%;
+animation: shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-icon {
+width: 34px;
+height: 34px;
+border-radius: 8px;
+background: rgba(255,255,255,0.08);
+flex-shrink: 0;
+}
+.skeleton-lines {
+flex: 1;
+display: flex;
+flex-direction: column;
+gap: 7px;
+}
+.skeleton-line {
+height: 10px;
+border-radius: 6px;
+background: rgba(255,255,255,0.08);
+}
+.skeleton-line-a { width: 60%; }
+.skeleton-line-b { width: 38%; }
+@keyframes shimmer {
+from { background-position: -200% 0; }
+to   { background-position:  200% 0; }
+}
+
 .card { 
 background: rgba(12,28,48,0.92); 
 backdrop-filter: blur(14px); 
@@ -2211,7 +2256,8 @@ display: flex;
 justify-content: center; 
 align-items: center; 
 padding: 20px; 
-overflow: auto; 
+overflow: hidden; 
+touch-action: none; 
 }
 
 #viewerImage { 
@@ -2221,6 +2267,10 @@ object-fit: contain;
 border-radius: 8px; 
 box-shadow: 0 0 30px rgba(0, 0, 0, 0.5); 
 animation: zoomIn 0.3s ease; 
+transform-origin: center center;
+transition: transform 0.05s linear;
+user-select: none;
+-webkit-user-drag: none;
 }
 
 @keyframes fadeIn { 
@@ -3326,8 +3376,14 @@ justify-content: space-between;
 .cf-folder-name { 
 font-size: 0.95rem; 
 font-weight: 700; 
-color: var(--text-primary); 
+color: #3b82f6; 
 letter-spacing: 0.01em; 
+}
+
+.cf-loc-icon {
+font-size: 0.75rem;
+opacity: 0.75;
+margin-right: 3px;
 }
 
 .cf-folder-icon { 
