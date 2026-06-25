@@ -3,7 +3,12 @@ const APP_VERSION = '1.0.0';
 const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY  = 'docman_recents_v1';
 const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
-const PIN_KEY = 'docman_pin_v1';
+const PIN_KEY = 'docman_pin_v2';
+
+async function hashPin(pin) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 const defaultSettings = {
     enableAnimations: true,
@@ -294,7 +299,7 @@ function openFile(dataUrl, fileName) {
         sharePdfFile(dataUrl, fileName);
     }
     else {
-        showConfirmModal(`This file type may not be supported.<br>Download "<b>${fileName}</b>"?`, (confirmed) => {
+        showConfirmModal(`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
             if (confirmed) {
                 const link = document.createElement('a');
                 link.href = dataUrl;
@@ -418,7 +423,7 @@ async function addFileToCurrentFolder(file) {
     haptic.success();
 }
 function deleteFileFromFolder(folderPath, fileName) {
-    showConfirmModal(`Delete "<b>${fileName}</b>"?`, (confirmed) => {
+    showConfirmModal(`Delete "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
     if(confirmed){
         haptic.warning();
         if(allFiles[folderPath]){
@@ -670,7 +675,7 @@ function createNoteCard(note, folderPath){
                     showToast(note.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
                 },
                 onRename: () => showPromptModal('Rename note:', note.title, (newTitle) => { if(newTitle?.trim()) renameNote(folderPath, note.id, newTitle.trim()); }),
-                onDelete: () => showConfirmModal(`Delete note "<b>${note.title}</b>"?`, (confirmed) => { if(confirmed) deleteNoteFromFolder(folderPath, note.id); }),
+                onDelete: () => showConfirmModal(`Delete note "<b>${escapeHtml(note.title)}</b>"?`, (confirmed) => { if(confirmed) deleteNoteFromFolder(folderPath, note.id); }),
             });
         }, 500);
     };
@@ -744,7 +749,6 @@ function render(){
     const folder = getCurrentFolderObject();
     if(!folder){ currentPath=[]; render(); return; }
     document.getElementById('homeBtn').classList.toggle('hidden', currentPath.length===0);
-    const bcDiv = document.getElementById('breadcrumb');
     const isRoot = currentPath.length===0;
     
     if(isRoot){
@@ -1146,7 +1150,7 @@ function renameCurrentFolder(){
 function deleteCurrentFolder(){
     if(!currentPath.length) return;
     const name = currentPath[currentPath.length-1];
-    showConfirmModal(`Delete "<b>${name}</b>" and all its contents? This cannot be undone.`, (confirmed) => {
+    showConfirmModal(`Delete "<b>${escapeHtml(name)}</b>" and all its contents? This cannot be undone.`, (confirmed) => {
     if(confirmed){
         const path = currentPath.join('/');
         const prefix = path + '/';
@@ -1935,7 +1939,7 @@ function showPinVerifyModal(title, callback) {
     overlay.querySelectorAll('.pvKey').forEach(btn => {
         btn.addEventListener('pointerdown', () => { btn.style.background = 'rgba(255,255,255,0.14)'; });
         btn.addEventListener('pointerup', () => { btn.style.background = 'rgba(255,255,255,0.06)'; });
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const k = btn.dataset.key;
             if (k === '⌫') {
                 entered = entered.slice(0, -1);
@@ -1944,7 +1948,8 @@ function showPinVerifyModal(title, callback) {
                 entered += k;
                 updateDots();
                 if (entered.length === 4) {
-                    if (entered === storedPin) {
+                    const enteredHash = await hashPin(entered);
+                    if (enteredHash === storedPin) {
                         overlay.remove();
                         callback(true);
                     } else {
@@ -1973,11 +1978,11 @@ function clearAllAppData() {
             });
         });
     } else {
-        showPromptModal('\u26a0\ufe0f No PIN set. Create a 4-digit PIN to authorize erase:', '', (val) => {
+        showPromptModal('\u26a0\ufe0f No PIN set. Create a 4-digit PIN to authorize erase:', '', async (val) => {
             if (val === null) return;
             const pin = val.trim();
             if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true); return; }
-            localStorage.setItem(PIN_KEY, pin);
+            localStorage.setItem(PIN_KEY, await hashPin(pin));
             showToast('PIN saved. Enter it again to confirm erase.');
             showPinVerifyModal('Confirm Erase All Data', (verified) => {
                 if (!verified) return;
@@ -2135,11 +2140,11 @@ function updatePinStatusUI() {
     if (lockToggle) lockToggle.checked = docmanSettings.appLock;
 }
 function promptSetPin(callback) {
-    showPromptModal('Set a 4-digit PIN:', '', (val) => {
+    showPromptModal('Set a 4-digit PIN:', '', async (val) => {
         if (val === null) { callback(false); return; }
         const pin = val.trim();
         if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true); callback(false); return; }
-        localStorage.setItem(PIN_KEY, pin);
+        localStorage.setItem(PIN_KEY, await hashPin(pin));
         showToast('PIN saved');
         callback(true);
     });
