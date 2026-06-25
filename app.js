@@ -799,7 +799,6 @@ function createCard(title, onClick, isFolder=false){
 }
 
 function render(){
-    hideSkeletonCards();
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
     if(query){
         isSearchMode=true;
@@ -1765,7 +1764,6 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     document.getElementById('homeBtn').addEventListener('click', goHome);
     document.getElementById('uploadBtn').addEventListener('click', triggerUpload);
     initSettingsPage();
-    showSkeletonCards();
     await initDB();
     await loadFromIndexedDB();
     attachPressEffects();
