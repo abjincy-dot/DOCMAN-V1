@@ -1383,7 +1383,6 @@ function updateThemeIcon(){
 function addDepthEffect(element, event){
     if(!element || element.hasAttribute('data-press-animating')) return;
     element.setAttribute('data-press-animating','true');
-    element.classList.add('press-depth-3d');
     haptic.press();
     setTimeout(()=>{
         element.classList.remove('press-depth-3d');
