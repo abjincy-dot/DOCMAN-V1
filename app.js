@@ -110,6 +110,14 @@ function showConfirmModal(message, callback) {
 
 function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
 
+const haptic = {
+    press:    () => navigator.vibrate?.(12),
+    longPress:() => navigator.vibrate?.(18),
+    success:  () => navigator.vibrate?.([10, 30, 10]),
+    warning:  () => navigator.vibrate?.(30),
+    toggle:   () => navigator.vibrate?.([10, 20, 10]),
+};
+
 function getRandomGradient() {
     const hue = Math.floor(Math.random() * 360);
     const sat = 40 + Math.random() * 20;
@@ -416,10 +424,12 @@ async function addFileToCurrentFolder(file) {
     const base64 = await new Promise(r=>{const rd=new FileReader(); rd.onload=e=>r(e.target.result); rd.readAsDataURL(file);});
     allFiles[folderPath].push({name:file.name, dataUrl:base64, type:file.type});
     await saveAllFilesToDB();
+    haptic.success();
 }
 function deleteFileFromFolder(folderPath, fileName) {
     showConfirmModal(`Delete "<b>${fileName}</b>"?`, (confirmed) => {
     if(confirmed){
+        haptic.warning();
         if(allFiles[folderPath]){
             allFiles[folderPath] = allFiles[folderPath].filter(f=>f.name!==fileName);
             if(!allFiles[folderPath].length) delete allFiles[folderPath];
@@ -564,7 +574,7 @@ function createFileCard(file, folderPath){
             pressTimer = null;
             div.classList.add('card-long-press');
             setTimeout(() => div.classList.remove('card-long-press'), 300);
-            if (window.navigator?.vibrate) window.navigator.vibrate(18);
+            haptic.longPress();
             showCardContextMenu({
                 title: file.name,
                 isFav: !!file.favourite,
@@ -575,6 +585,7 @@ function createFileCard(file, folderPath){
                     if (f) { f.favourite = !f.favourite; file.favourite = f.favourite; }
                     const ind = div.querySelector('.card-fav-indicator');
                     if (ind) ind.classList.toggle('card-fav-hidden', !file.favourite);
+                    haptic.toggle();
                     saveAllFilesToDB();
                     updateStats();
                     render();
@@ -622,7 +633,7 @@ function createNoteCard(note, folderPath){
             pressTimer = null;
             div.classList.add('card-long-press');
             setTimeout(() => div.classList.remove('card-long-press'), 300);
-            if (window.navigator?.vibrate) window.navigator.vibrate(18);
+            haptic.longPress();
             showCardContextMenu({
                 title: note.title,
                 isFav: !!note.favourite,
@@ -633,6 +644,7 @@ function createNoteCard(note, folderPath){
                     if (n) { n.favourite = !n.favourite; note.favourite = n.favourite; }
                     const ind = div.querySelector('.card-fav-indicator');
                     if (ind) ind.classList.toggle('card-fav-hidden', !note.favourite);
+                    haptic.toggle();
                     saveAllNotesToDB();
                     updateStats();
                     render();
@@ -1374,7 +1386,7 @@ function addDepthEffect(element, event){
     if(!element || element.hasAttribute('data-press-animating')) return;
     element.setAttribute('data-press-animating','true');
     element.classList.add('press-depth-3d');
-    if(window.navigator?.vibrate) window.navigator.vibrate(12);
+    haptic.press();
     setTimeout(()=>{
         element.classList.remove('press-depth-3d');
         element.removeAttribute('data-press-animating');
