@@ -776,7 +776,7 @@ function render(){
                 const knownDepts = ['REMELT','CASTER','HRM','CRM','ANNEALING','TLL','SLITTER','UTILITY'];
                 const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? ` style="background:${deptColors[dept]}"` : '';
             html += `<div class="dept-card" data-dept="${escapeHtml(dept)}">
-                <div class="dept-oval" onclick="selectDepartment('${escapeHtml(dept)}')">
+                <div class="dept-oval">
                     <div class="dept-pill-bg"${pillBgStyle}></div>
                     <div class="dept-pill-center-icon"><i class="fas ${icon}"></i></div>
                     <div class="dept-pill-body">
@@ -1109,6 +1109,8 @@ svg.appendChild(hDot);
 function attachDepartmentPressEffects() {
     document.querySelectorAll('.dept-oval').forEach(oval => {
         oval.addEventListener('touchstart', () => {}, { passive: false });
+        const card = oval.closest('.dept-card');
+        if (card) oval.onclick = () => selectDepartment(card.dataset.dept);
     });
 }
 
