@@ -1,3 +1,5 @@
+const APP_VERSION = '1.0.0';
+
 const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY  = 'docman_recents_v1';
 const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
@@ -1618,6 +1620,9 @@ async function handleFiles(files) {
 }
 
 document.addEventListener('DOMContentLoaded', async ()=>{
+    // Inject version strings from single source of truth
+    const vEls = ['aboutVersionBadge', 'aboutVersionRow', 'deptInfoVersion'];
+    vEls.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = APP_VERSION; });
     const themeBtn = document.getElementById('themeToggle');
     if(themeBtn) themeBtn.onclick = toggleTheme;
     const _savedTheme = docmanSettings.theme || localStorage.getItem('docman_theme') || 'dark';
