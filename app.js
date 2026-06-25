@@ -40,7 +40,6 @@ let currentPath = [];
 let isSearchMode = false;
 let currentActiveTab = 'pdfs';
 let editingNoteId = null;
-let currentSortMode = 'name'; // 'name' | 'newest' | 'largest'
 
 function showToast(msg, isErr = false) {
     const toast = document.getElementById('toast');
@@ -756,40 +755,6 @@ function createCard(title, onClick, isFolder=false){
     return div;
 }
 
-function setSortMode(mode) {
-    currentSortMode = mode;
-    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-    const map = { name: 'sortNameBtn', newest: 'sortNewestBtn', largest: 'sortLargestBtn' };
-    const btn = document.getElementById(map[mode]);
-    if (btn) btn.classList.add('active');
-    render();
-}
-
-function sortedFiles(files) {
-    const arr = [...files];
-    if (currentSortMode === 'name') {
-        arr.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-    } else if (currentSortMode === 'newest') {
-        // Use dataUrl length as proxy for recency if no timestamp; files added later are appended so reverse index is newest
-        arr.reverse();
-    } else if (currentSortMode === 'largest') {
-        arr.sort((a, b) => (b.dataUrl?.length || 0) - (a.dataUrl?.length || 0));
-    }
-    return arr;
-}
-
-function sortedNotes(notes) {
-    const arr = [...notes];
-    if (currentSortMode === 'name') {
-        arr.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
-    } else if (currentSortMode === 'newest') {
-        arr.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
-    } else if (currentSortMode === 'largest') {
-        arr.sort((a, b) => (b.content?.length || 0) - (a.content?.length || 0));
-    }
-    return arr;
-}
-
 function render(){
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
     if(query){
@@ -808,8 +773,6 @@ function render(){
         document.getElementById('departmentsSection').innerHTML = '';
         document.getElementById('breadcrumb').innerHTML = '';
         document.querySelector('.type-selector').style.display = 'none';
-        const sortBar = document.getElementById('sortBar');
-        if (sortBar) sortBar.classList.remove('sort-bar-visible');
         if(!results.length) contentDiv.innerHTML = '<div class="empty-state"><i class="fas fa-search"></i><p>No results found.</p></div>';
         else results.forEach(item => { if(item.type==='file') contentDiv.appendChild(createFileCard(item, item.folder)); else contentDiv.appendChild(createNoteCard(item, item.folder)); });
         updateStats();
@@ -897,9 +860,7 @@ function render(){
     const hasSubfolders = Object.keys(folder).length>0;
     const isLeafFolder = !isRoot && !hasSubfolders;
     const typeSelector = document.querySelector('.type-selector');
-    const sortBar = document.getElementById('sortBar');
     if(typeSelector) typeSelector.style.display = isLeafFolder ? 'flex' : 'none';
-    if(sortBar) sortBar.classList.toggle('sort-bar-visible', isLeafFolder);
     if(isLeafFolder){
         if(currentActiveTab==='pdfs'){ document.getElementById('uploadBtn').classList.remove('hidden'); document.getElementById('newNoteBtn').classList.add('hidden'); }
         else { document.getElementById('uploadBtn').classList.add('hidden'); document.getElementById('newNoteBtn').classList.remove('hidden'); }
@@ -965,7 +926,7 @@ function render(){
         if(currentActiveTab==='pdfs'){
             const files = getFilesForCurrentFolder();
             const path = currentPath.join('/');
-            if(files.length) sortedFiles(files).forEach(f=>document.getElementById('content').appendChild(createFileCard(f,path)));
+            if(files.length) files.forEach(f=>document.getElementById('content').appendChild(createFileCard(f,path)));
             else {
                 const dz = document.createElement('div');
                 dz.className = 'empty-state';
@@ -975,7 +936,7 @@ function render(){
         } else {
             const notes = getNotesForCurrentFolder();
             const path = currentPath.join('/');
-            if(notes.length) sortedNotes(notes).forEach(n=>document.getElementById('content').appendChild(createNoteCard(n,path)));
+            if(notes.length) notes.forEach(n=>document.getElementById('content').appendChild(createNoteCard(n,path)));
             else document.getElementById('content').innerHTML += '<div class="empty-state empty-state-note"><i class="fas fa-sticky-note"></i><p>No notes yet. Click + New Note to add.</p></div>';
         }
     }
@@ -1505,7 +1466,6 @@ window.renameCurrentFolder = renameCurrentFolder;
 window.deleteCurrentFolder = deleteCurrentFolder;
 window.addNewFolder = addNewFolder;
 window.addNewDepartment = addNewDepartment;
-window.setSortMode = setSortMode;
 
 let pdfViewerDoc = null;
 let pdfPageHeights = [];
