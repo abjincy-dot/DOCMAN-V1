@@ -5047,3 +5047,80 @@ box-shadow: 0 0 0 2.5px #94a3b8, 0 0 28px 8px rgba(148,163,184,0.55);
     border-radius: 16px 16px 0 0;
     margin-top: 4px;
 }
+
+/* ── Step 9: Inline styles → CSS classes ── */
+
+/* body background */
+body { background: #0e0e0e !important; }
+
+/* splash orbs */
+.splash-bg-layer {
+  position: absolute; inset: 0; overflow: hidden; z-index: 0;
+}
+.splash-orb {
+  position: absolute; border-radius: 50%;
+}
+.splash-orb-1 {
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(99,102,241,0.3), transparent);
+  top: -10%; left: -5%;
+  animation: splashFloat1 6s ease-in-out infinite;
+}
+.splash-orb-2 {
+  width: 250px; height: 250px;
+  background: radial-gradient(circle, rgba(139,92,246,0.25), transparent);
+  bottom: 5%; right: -10%;
+  animation: splashFloat2 8s ease-in-out infinite;
+}
+
+/* hidden utility */
+.fav-count-hidden { display: none; }
+.input-hidden { display: none; }
+
+/* stats grid icon colours */
+.stats-icon-files   { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.stats-icon-notes   { background: linear-gradient(135deg, #fbbf24, #d97706); }
+.stats-icon-folders { background: linear-gradient(135deg, #10b981, #059669); }
+.stats-icon-depts   { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+
+/* settings icon small variant */
+.settings-icon-sm {
+  width: 36px !important; height: 36px !important;
+  font-size: 0.85rem !important; flex-shrink: 0;
+}
+
+/* settings row — no bottom border */
+.settings-row-no-border { border-bottom: none !important; }
+
+/* about info row — last item */
+.about-info-row-last { border-bottom: none !important; }
+
+/* note modal */
+.modal-body-note { padding-top: 20px; }
+
+.note-title-input {
+  margin-bottom: 14px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  background: rgba(255,255,255,0.1);
+  border: 1.5px solid rgba(255,255,255,0.25);
+  color: #f8fafc;
+}
+
+.note-content-input {
+  background: rgba(255,255,255,0.07);
+  border: 1.5px solid rgba(255,255,255,0.18);
+  color: #e2e8f0;
+}
+
+/* light-mode note modal inputs */
+body.light-mode .note-title-input {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(99,102,241,0.35);
+  color: #1e293b;
+}
+body.light-mode .note-content-input {
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(99,102,241,0.25);
+  color: #334155;
+}
