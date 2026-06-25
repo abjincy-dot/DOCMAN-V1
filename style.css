@@ -2326,14 +2326,8 @@ transform: translateY(4px) scale(0.98) !important;
 transition: all 0.04s cubic-bezier(0.2, 0.9, 0.4, 1.2) !important; 
 }
 
-.card { 
-transform: translateY(0px); 
-box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25), 0 3px 10px rgba(0, 0, 0, 0.15) !important; 
-}
 
-.card:active {
-    box-shadow: 0 1px 0 rgba(0,0,0,0.25), 0 1px 4px rgba(0,0,0,0.1) !important;
-}
+
 
 
 #uploadBtn, #newNoteBtn { 
