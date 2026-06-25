@@ -533,41 +533,6 @@ filter: none !important;
 transform: none !important; 
 }
 
-/* ── Sort Bar ── */
-.sort-bar {
-  display: none;
-  flex-direction: row;
-  gap: 6px;
-  padding: 8px 16px 4px;
-  align-items: center;
-}
-.sort-bar.sort-bar-visible {
-  display: flex;
-}
-.sort-btn {
-  flex: 1;
-  padding: 7px 0;
-  border-radius: 40px;
-  border: 1.5px solid rgba(150, 100, 220, 0.28);
-  background: rgba(30, 18, 80, 0.55);
-  color: rgba(180, 200, 255, 0.6);
-  font-size: 0.78rem;
-  font-weight: 600;
-  font-family: Inter, sans-serif;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  transition: border-color 0.2s, color 0.2s, background 0.2s;
-}
-.sort-btn.active {
-  background: linear-gradient(135deg, rgba(90,40,232,0.55), rgba(67,24,192,0.7));
-  border-color: rgba(180, 80, 255, 0.75);
-  color: #fff;
-  box-shadow: 0 0 8px rgba(140, 60, 255, 0.3);
-}
-
 #backBtn{ 
 color:#6ea0ff; 
 padding:0 22px; 
@@ -2583,18 +2548,6 @@ box-shadow: 0 4px 14px rgba(99,102,241,0.45) !important;
 } 
 body.light-mode .type-btn i { 
 color: inherit !important; 
-}
-
-body.light-mode .sort-btn {
-  background: rgba(240, 235, 255, 0.7);
-  border-color: rgba(99, 102, 241, 0.25);
-  color: rgba(80, 60, 160, 0.65);
-}
-body.light-mode .sort-btn.active {
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  border-color: #6366f1;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(99,102,241,0.3);
 }
 
 body.light-mode #backBtn { 
