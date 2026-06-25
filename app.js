@@ -503,42 +503,69 @@ function getFileSizeLabel(dataUrl) {
 }
 
 // ── Context Menu ──
-function showCardContextMenu({ title, isFav, onFav, onRename, onDelete }) {
+function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, triggerEl }) {
     const existing = document.getElementById('ctxMenuOverlay');
     if (existing) existing.remove();
+
     const overlay = document.createElement('div');
     overlay.id = 'ctxMenuOverlay';
     overlay.className = 'ctx-menu-overlay';
+
     const menu = document.createElement('div');
     menu.className = 'ctx-menu';
     menu.innerHTML = `
-        <div class="ctx-menu-handle"></div>
-        <div class="ctx-menu-title">${title}</div>
-        <div class="ctx-menu-item" id="ctxFav">
-            <div class="ctx-menu-item-icon ctx-icon-fav"><i class="fas fa-star"></i></div>
-            <span class="ctx-menu-item-label">${isFav ? 'Remove Favourite' : 'Add to Favourites'}</span>
-        </div>
+        <div class="ctx-menu-title">${escapeHtml(title)}</div>
         <div class="ctx-menu-divider"></div>
+        <div class="ctx-menu-item" id="ctxFav">
+            <i class="fas fa-star ctx-item-icon ctx-icon-fav"></i>
+            <span class="ctx-menu-item-label">${isFav ? 'Unfavourite' : 'Favourite'}</span>
+        </div>
         <div class="ctx-menu-item" id="ctxRename">
-            <div class="ctx-menu-item-icon ctx-icon-rename"><i class="fas fa-edit"></i></div>
+            <i class="fas fa-pen ctx-item-icon ctx-icon-rename"></i>
             <span class="ctx-menu-item-label">Rename</span>
         </div>
         <div class="ctx-menu-divider"></div>
         <div class="ctx-menu-item" id="ctxDelete">
-            <div class="ctx-menu-item-icon ctx-icon-delete"><i class="fas fa-trash"></i></div>
+            <i class="fas fa-trash ctx-item-icon ctx-icon-delete"></i>
             <span class="ctx-menu-item-label danger">Delete</span>
         </div>
     `;
+
     const close = () => {
+        menu.style.animation = 'ctxPopOut 0.15s ease forwards';
         overlay.style.opacity = '0';
-        menu.style.transform = 'translateY(100%)';
-        menu.style.transition = 'transform 0.2s ease';
-        setTimeout(() => overlay.remove(), 200);
+        overlay.style.transition = 'opacity 0.15s ease';
+        setTimeout(() => overlay.remove(), 160);
     };
+
     overlay.appendChild(menu);
     document.body.appendChild(overlay);
+
+    // Position near the card
+    if (triggerEl) {
+        const rect = triggerEl.getBoundingClientRect();
+        const menuW = 200;
+        const menuH = 180;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        // Prefer top-right of card; flip if near edges
+        let left = rect.right - menuW;
+        let top = rect.top - menuH - 8;
+
+        if (left < 8) left = 8;
+        if (left + menuW > vw - 8) left = vw - menuW - 8;
+        if (top < 8) top = rect.bottom + 8;
+        if (top + menuH > vh - 8) top = vh - menuH - 8;
+
+        menu.style.left = left + 'px';
+        menu.style.top  = top  + 'px';
+        menu.style.right = 'auto';
+        menu.style.bottom = 'auto';
+    }
+
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    document.getElementById('ctxFav').addEventListener('click', () => { close(); onFav(); });
+    document.getElementById('ctxFav').addEventListener('click',    () => { close(); onFav(); });
     document.getElementById('ctxRename').addEventListener('click', () => { close(); onRename(); });
     document.getElementById('ctxDelete').addEventListener('click', () => { close(); onDelete(); });
 }
@@ -569,6 +596,7 @@ function createFileCard(file, folderPath){
             showCardContextMenu({
                 title: file.name,
                 isFav: !!file.favourite,
+                triggerEl: div,
                 onFav: () => {
                     const files = allFiles[folderPath];
                     if (!files) return;
@@ -628,6 +656,7 @@ function createNoteCard(note, folderPath){
             showCardContextMenu({
                 title: note.title,
                 isFav: !!note.favourite,
+                triggerEl: div,
                 onFav: () => {
                     const notes = allNotes[folderPath];
                     if (!notes) return;
