@@ -456,7 +456,8 @@ function initDB() {
     });
 }
 
-async function loadFromIndexedDB() {
+function loadFromIndexedDB() {
+  return new Promise((resolve) => {
     const folderReq = db.transaction('folderStructure','readonly').objectStore('folderStructure').get('structure');
     folderReq.onsuccess = ()=>{
         if(folderReq.result) fileSystem = folderReq.result.value;
@@ -527,10 +528,12 @@ notesReq.onsuccess = ()=>{
     if (typeof window !== "undefined") {
         window.docmanReady = true;
     }
+    resolve();
 };
 
         };   // fileReq.onsuccess
     };       // folderReq.onsuccess
+  }); // Promise
 }            // loadFromIndexedDB                       
 function getCurrentFolderObject() { return currentPath.reduce((o,p)=>o?.[p], fileSystem); }
 function getFilesForCurrentFolder() { return allFiles[currentPath.join('/')] || []; }
