@@ -83,7 +83,7 @@ position: relative;
 z-index: 2; 
 max-width: 900px; 
 margin: 0 auto; 
-padding: 24px 20px 40px;
+padding: 24px 20px calc(40px + env(safe-area-inset-bottom));
 
 opacity: 0;
 transform: translateY(24px) scale(0.98);
@@ -5076,4 +5076,119 @@ body.light-mode .note-content-input {
   background: rgba(0,0,0,0.03);
   border-color: rgba(99,102,241,0.25);
   color: #334155;
+}
+
+
+/* =============================================
+   ITEM 14 — Loading Skeleton / Shimmer
+   ============================================= */
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.skeleton-card {
+  background: var(--card-bg, rgba(255,255,255,0.05));
+  border-radius: 14px;
+  padding: 16px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  overflow: hidden;
+}
+
+.skeleton-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.skeleton-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton-line {
+  height: 10px;
+  border-radius: 6px;
+}
+
+.skeleton-line-long  { width: 80%; }
+.skeleton-line-short { width: 50%; }
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.10) 40%,
+    rgba(255,255,255,0.04) 80%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+body.light-mode .shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(0,0,0,0.06) 0%,
+    rgba(0,0,0,0.13) 40%,
+    rgba(0,0,0,0.06) 80%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+
+/* =============================================
+   ITEM 15 — Breadcrumb current-folder highlight
+   ============================================= */
+
+.cf-part-nav {
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: color 0.15s;
+}
+
+.cf-part-nav:hover {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+
+.cf-part-current {
+  color: #3b82f6;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+body.light-mode .cf-part-current {
+  color: #2563eb;
+}
+
+
+/* =============================================
+   ITEM 17 — Image Viewer zoom/pan tweaks
+   ============================================= */
+
+.image-viewer-body {
+  touch-action: none;   /* let our JS own all touch gestures */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#viewerImage {
+  transform-origin: center center;
+  will-change: transform;
+  touch-action: none;
 }
