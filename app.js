@@ -1305,11 +1305,13 @@ function openFavouritesView() {
                 `;
                 row.querySelector('.fav-row-unfav').addEventListener('click', (e) => {
                     e.stopPropagation();
-                    const arr = allNotes[folderPath];
+                                        const arr = allNotes[folderPath];
                     if (arr) { const n2 = arr.find(x => x.id === note.id); if (n2) n2.favourite = false; }
                     saveAllNotesToDB();
                     updateStats();
+                    render();
                     row.classList.add('fav-row-removing');
+
                     setTimeout(() => { row.remove(); checkFavEmpty(list); }, 280);
                 });
                 row.addEventListener('click', (e) => {
