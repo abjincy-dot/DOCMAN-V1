@@ -1270,11 +1270,13 @@ function openFavouritesView() {
                 `;
                 row.querySelector('.fav-row-unfav').addEventListener('click', (e) => {
                     e.stopPropagation();
-                    const arr = allFiles[folderPath];
+                                     const arr = allFiles[folderPath];
                     if (arr) { const f2 = arr.find(x => x.name === file.name); if (f2) f2.favourite = false; }
                     saveAllFilesToDB();
                     updateStats();
+                    render();
                     row.classList.add('fav-row-removing');
+
                     setTimeout(() => { row.remove(); checkFavEmpty(list); }, 280);
                 });
                 row.addEventListener('click', (e) => {
