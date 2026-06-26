@@ -267,7 +267,6 @@ async function saveAllFilesToDB() {
     for (const folderPath in allFiles) {
         if (allFiles[folderPath]?.length) {
             const files = allFiles[folderPath].map(f => {
-                // If we have a Blob, store it directly
                 if (f.fileData instanceof Blob) {
                     return {
                         name: f.name,
@@ -278,7 +277,6 @@ async function saveAllFilesToDB() {
                         size: f.fileData.size || 0
                     };
                 }
-                // If we have dataUrl (legacy), keep it
                 if (f.dataUrl) {
                     return {
                         name: f.name,
@@ -289,7 +287,6 @@ async function saveAllFilesToDB() {
                         size: f.size || 0
                     };
                 }
-                // Fallback
                 return f;
             });
             await store.put({ id: folderPath, folderPath, files });
@@ -311,7 +308,7 @@ async function saveAllNotesToDB() {
 }
 
 // ============================================================
-// FILE DATA LOADING (LAZY) - WITH FALLBACK
+// FILE DATA LOADING (LAZY)
 // ============================================================
 
 async function loadFileData(folderPath, fileName) {
@@ -327,20 +324,15 @@ async function loadFileData(folderPath, fileName) {
         const fileEntry = result?.files?.find(f => f.name === fileName);
         if (!fileEntry) return null;
 
-        // CASE 1: Already a Blob
         if (fileEntry.fileData instanceof Blob) {
             return fileEntry.fileData;
         }
 
-        // CASE 2: Base64 dataUrl (legacy) - Convert on the fly
         if (fileEntry.dataUrl && typeof fileEntry.dataUrl === 'string') {
             try {
                 const response = await fetch(fileEntry.dataUrl);
                 const blob = await response.blob();
-
-                // Cache it back to IndexedDB for next time
                 await cacheFileAsBlob(folderPath, fileName, blob, fileEntry);
-
                 return blob;
             } catch (e) {
                 console.warn('Failed to convert base64 to blob:', e);
@@ -378,7 +370,6 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
                 };
                 await store.put(result);
 
-                // Update in-memory cache too
                 if (allFiles[folderPath]) {
                     const idx = allFiles[folderPath].findIndex(f => f.name === fileName);
                     if (idx !== -1) {
@@ -459,7 +450,6 @@ async function migrateBase64ToBlob() {
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
 
-            // Check if this file has a base64 dataUrl
             if (file.dataUrl && typeof file.dataUrl === 'string' && file.dataUrl.startsWith('data:')) {
                 try {
                     const response = await fetch(file.dataUrl);
@@ -480,7 +470,6 @@ async function migrateBase64ToBlob() {
                     console.warn('Failed to migrate file:', file.name, e);
                 }
             } else if (file.fileData instanceof Blob) {
-                // Already a Blob, ensure size is set
                 if (!file.size && file.fileData) {
                     files[i].size = file.fileData.size;
                     folderChanged = true;
@@ -501,7 +490,6 @@ async function migrateBase64ToBlob() {
         console.log('No files needed migration');
     }
 
-    // Reload metadata after migration
     await loadAllFileMetadata();
     render();
 }
@@ -836,7 +824,7 @@ async function openFile(fileName, folderPath) {
     if (fileType === 'image') {
         openImageViewer(fileData, fileName);
     } else if (fileType === 'pdf') {
-        sharePdfFile(fileData, fileName);
+        await sharePdfFile(fileData, fileName);
     } else {
         showConfirmModal(`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
             if (confirmed) {
@@ -891,31 +879,153 @@ function closeImageViewer() {
 }
 
 // ============================================================
-// PDF SHARING
+// PDF SHARING - FIXED
 // ============================================================
 
+let isSharing = false;
+
 async function sharePdfFile(fileData, fileName) {
+    if (isSharing) {
+        showToast('Please wait, sharing is in progress...', true);
+        return;
+    }
+
     try {
+        isSharing = true;
+
+        // Check if built-in viewer is enabled
+        if (docmanSettings.pdfOpen === 'docman') {
+            openPdfViewer(fileData, fileName);
+            return;
+        }
+
+        // Check file size against threshold
+        const fileSizeMB = fileData.size / (1024 * 1024);
+        const threshold = docmanSettings.pdfThreshold || 20;
+
+        if (fileSizeMB <= threshold) {
+            // Small PDF - use built-in viewer
+            openPdfViewer(fileData, fileName);
+            return;
+        }
+
+        // Large PDF - use share or download
         const file = new File([fileData], fileName, { type: 'application/pdf' });
 
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: fileName });
+            try {
+                await navigator.share({
+                    files: [file],
+                    title: fileName
+                });
+            } catch (shareErr) {
+                if (shareErr.name === 'AbortError') {
+                    console.log('Share cancelled by user');
+                } else if (shareErr.name === 'NotAllowedError') {
+                    showToast('Share not allowed. Downloading instead...');
+                    downloadPdf(fileData, fileName);
+                } else {
+                    throw shareErr;
+                }
+            }
         } else {
-            const url = URL.createObjectURL(fileData);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 10000);
+            downloadPdf(fileData, fileName);
         }
     } catch (err) {
         if (err.name !== 'AbortError') {
-            showToast('Could not open file: ' + err.message, true);
+            showToast('Could not open PDF: ' + err.message, true);
+            try {
+                downloadPdf(fileData, fileName);
+            } catch (downloadErr) {
+                console.error('Download fallback failed:', downloadErr);
+            }
         }
+    } finally {
+        setTimeout(() => {
+            isSharing = false;
+        }, 800);
     }
 }
+
+function downloadPdf(fileData, fileName) {
+    try {
+        const url = URL.createObjectURL(fileData);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        showToast('Downloading: ' + fileName);
+    } catch (err) {
+        console.error('Download failed:', err);
+        showToast('Could not download file', true);
+    }
+}
+
+// ============================================================
+// BUILT-IN PDF VIEWER
+// ============================================================
+
+function openPdfViewer(fileData, fileName) {
+    const url = URL.createObjectURL(fileData);
+
+    // Remove existing viewer if any
+    const existing = document.getElementById('pdfViewer');
+    if (existing) {
+        if (existing._url) URL.revokeObjectURL(existing._url);
+        existing.remove();
+    }
+
+    const viewer = document.createElement('div');
+    viewer.id = 'pdfViewer';
+    viewer.className = 'pdf-viewer';
+    viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
+
+    viewer.innerHTML = `
+        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:12px;flex-shrink:0;">
+            <button onclick="closePdfViewer()" style="background:none;border:none;color:#e2e8f0;font-size:1.2rem;cursor:pointer;padding:4px 8px;">
+                <i class="fas fa-times"></i>
+            </button>
+            <span class="pdf-viewer-title" style="flex:1;color:#e2e8f0;font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(fileName)}</span>
+            <button onclick="downloadPdfFromViewer()" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#e2e8f0;padding:6px 12px;cursor:pointer;font-size:0.8rem;">
+                <i class="fas fa-download"></i> Download
+            </button>
+        </div>
+        <div class="pdf-viewer-body" style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:#2a2a2a;padding:12px;">
+            <iframe src="${url}" style="width:100%;height:100%;border:none;background:#fff;border-radius:4px;" allowfullscreen></iframe>
+        </div>
+    `;
+
+    document.body.appendChild(viewer);
+
+    viewer._url = url;
+    viewer._fileName = fileName;
+    viewer._fileData = fileData;
+}
+
+function closePdfViewer() {
+    const viewer = document.getElementById('pdfViewer');
+    if (viewer) {
+        if (viewer._url) {
+            URL.revokeObjectURL(viewer._url);
+        }
+        viewer.remove();
+        isSharing = false;
+    }
+}
+
+function downloadPdfFromViewer() {
+    const viewer = document.getElementById('pdfViewer');
+    if (viewer && viewer._url && viewer._fileName) {
+        downloadPdf(viewer._fileData || viewer._url, viewer._fileName);
+    }
+}
+
+// Expose PDF viewer functions to window
+window.closePdfViewer = closePdfViewer;
+window.downloadPdfFromViewer = downloadPdfFromViewer;
 
 // ============================================================
 // CONTEXT MENU
@@ -2167,7 +2277,6 @@ function exportBackupData() {
         version: APP_VERSION
     };
 
-    // Only export file metadata, not actual file data
     backup.fileMetadata = {};
     for (const path in allFiles) {
         if (allFiles[path]) {
@@ -2205,7 +2314,6 @@ function importBackupData(file) {
                 allNotes = backup.allNotes || {};
                 deptColors = backup.deptColors || {};
 
-                // Import file metadata
                 if (backup.fileMetadata) {
                     for (const path in backup.fileMetadata) {
                         if (backup.fileMetadata[path]) {
@@ -3001,6 +3109,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeImageViewer();
+            closePdfViewer();
         }
     });
 
@@ -3034,13 +3143,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     showLoadingSkeleton();
     await initDB();
 
-    // Load folder structure first
     const folderReq = db.transaction('folderStructure', 'readonly').objectStore('folderStructure').get('structure');
     folderReq.onsuccess = () => {
         if (folderReq.result) {
             fileSystem = folderReq.result.value;
         } else {
-            // Initialize default structure
             fileSystem = {
                 "REMELT": {
                     "FURNACE 1": {},
@@ -3072,7 +3179,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             saveFolderStructure();
         }
 
-        // Load dept colors
         const deptColorsReq = db.transaction('folderStructure', 'readonly').objectStore('folderStructure').get('deptColors');
         deptColorsReq.onsuccess = () => {
             if (deptColorsReq.result) {
@@ -3080,9 +3186,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
 
-        // Load file metadata
         loadAllFileMetadata().then(() => {
-            // Load notes
             const notesReq = db.transaction('notes', 'readonly').objectStore('notes').getAll();
             notesReq.onsuccess = () => {
                 allNotes = {};
@@ -3091,7 +3195,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 render();
 
-                // Run migration if needed (only once)
                 const migrationRun = localStorage.getItem('docman_migration_done');
                 if (!migrationRun) {
                     setTimeout(async () => {
@@ -3108,11 +3211,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     attachPressEffects();
-
-    // Image viewer gestures
     initImageViewerGestures();
 
-    // Resize handling for department connectors
     let resizeTimeout;
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimeout);
@@ -3143,12 +3243,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('scroll', redrawOnFirstInteraction, { capture: true, passive: true, once: true });
     window.addEventListener('touchstart', redrawOnFirstInteraction, { capture: true, passive: true, once: true });
 
-    // Prevent context menu
     document.addEventListener('contextmenu', function(e) {
         e.preventDefault();
     });
 
-    // Prevent image long press save
     document.addEventListener('touchstart', function(e) {
         if (e.target.tagName === 'IMG' || e.target.classList.contains('logo-tray-icon') ||
             e.target.classList.contains('header-gear-icon') || e.target.classList.contains('home-icon-img')) {
@@ -3156,7 +3254,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }, { passive: false });
 
-    // Expose functions to window
     window.selectDepartment = selectDepartment;
     window.goBack = goBack;
     window.goHome = goHome;
