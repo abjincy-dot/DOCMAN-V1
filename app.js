@@ -556,136 +556,126 @@ function showLoadingSkeleton() {
 }
 
 // ── render split into focused sub-functions ──
-function renderHome() {
-    const deptIcons = { 'REMELT':'fa-fire-flame-curved','CASTER':'fa-industry','HRM':'fa-users','CRM':'fa-microchip','ANNEALING':'fa-temperature-high','TLL':'fa-gears','SLITTER':'fa-scissors','UTILITY':'fa-bolt' };
-    const knownDepts = ['REMELT','CASTER','HRM','CRM','ANNEALING','TLL','SLITTER','UTILITY'];
-    const hasDepts = Object.keys(fileSystem).length > 0;
-    let html = '';
-    if (hasDepts) {
-        html = '<div class="departments-wrapper"><div class="departments-grid">';
-        for (let dept in fileSystem) {
-            const total = countDepartmentFiles(fileSystem[dept], [dept]);
-            const icon = deptIcons[dept] || 'fa-folder';
-            const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? ` style="background:${deptColors[dept]}"` : '';
-            html += `<div class="dept-card" data-dept="${escapeHtml(dept)}">
-                <div class="dept-oval">
-                    <div class="dept-pill-bg"${pillBgStyle}></div>
-                    <div class="dept-pill-center-icon"><i class="fas ${icon}"></i></div>
-                    <div class="dept-pill-body"><div class="dept-pill-name">${escapeHtml(dept)}</div></div>
-                </div>
-                <div class="dept-pill-icon"><span class="dept-count">${total}</span><span class="dept-count-label">Items</span></div>
-            </div>`;
-        }
-        html += `</div><div class="dept-hub"><div class="dept-hub-circle"><span class="dept-hub-text">DEPARTMENT</span><div class="dept-hub-knob" onclick="showInfo()" ontouchstart=""><i class="fas fa-info dept-hub-icon"></i></div></div></div></div>`;
-    }
-    html += `<div class="dept-add-footer"><button class="dept-add-btn" onclick="addNewDepartment()"><span class="dept-add-btn-icon"><i class="fas fa-plus"></i></span><span class="dept-add-btn-label">Add Department</span></button></div>`;
-    document.getElementById('departmentsSection').innerHTML = html;
-    document.getElementById('homeBtn').classList.add('hidden');
-    document.getElementById('uploadBtn').classList.add('hidden');
-    document.getElementById('newNoteBtn').classList.add('hidden');
-    if (hasDepts) { drawDeptConnectorsWhenStable(); }
-}
-
-function renderFolder(folder) {
-    document.getElementById('departmentsSection').innerHTML = '';
-    const contentDiv = document.getElementById('content');
-    const folderCardEl = document.createElement('div');
-    folderCardEl.className = 'current-folder-card';
-    const parentPath = currentPath.slice(0, -1);
-    const pathHtml = `<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-home"></i> <span style="color:#3b82f6">Home</span></span>` +
-        parentPath.map((p,i) => `<span class="cf-sep"> / </span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})">${escapeHtml(p)}</span>`).join('') +
-        `<span class="cf-sep"> / </span><span class="cf-part cf-part-current">${escapeHtml(currentPath[currentPath.length-1])}</span>`;
-    folderCardEl.innerHTML = `<div class="cf-path-row">${pathHtml}</div><div class="cf-bottom-row"><div class="cf-folder-name">${escapeHtml(currentPath[currentPath.length-1])}</div><div class="cf-folder-icon"><i class="fas fa-folder"></i><i class="fas fa-star cf-star"></i></div></div>`;
-    contentDiv.appendChild(folderCardEl);
-
-    const actionDiv = document.createElement('div');
-    actionDiv.className = 'action-bar';
-    actionDiv.innerHTML = `<div class="action-dots action-dots-left"><span></span><span></span><span></span><span></span><span></span><span></span></div><div class="action-btns-wrap"><div class="action-btns-row"><button class="action-btn action-btn-rename" onclick="renameCurrentFolder()"><i class="fas fa-edit"></i> Rename Folder</button><button class="action-btn action-btn-delete" onclick="deleteCurrentFolder()"><i class="fas fa-trash-alt"></i> Delete Folder</button></div><div class="action-btns-row"><button class="action-btn action-btn-back" onclick="goBack()"><i class="fas fa-arrow-left"></i> Back</button><button class="action-btn action-btn-add" onclick="addNewFolder()"><i class="fas fa-plus"></i> Add Subfolder</button></div></div><div class="action-dots action-dots-right"><span></span><span></span><span></span><span></span><span></span><span></span></div>`;
-    const _fc = contentDiv.querySelector('.current-folder-card');
-    if (_fc) contentDiv.insertBefore(actionDiv, _fc); else contentDiv.appendChild(actionDiv);
-
-    if (Object.keys(folder).length > 0) {
-        for (let key in folder) {
-            contentDiv.appendChild(createCard(key, () => { navigateWithPageTurn(() => { currentPath.push(key); render(); }, 'forward'); }, true));
-        }
-    }
-}
-
-function renderLeaf() {
-    const typeSelector = document.querySelector('.type-selector');
-    if (typeSelector) typeSelector.style.display = 'flex';
-    const contentDiv = document.getElementById('content');
-    if (currentActiveTab === 'pdfs') {
-        document.getElementById('uploadBtn').classList.remove('hidden');
-        document.getElementById('newNoteBtn').classList.add('hidden');
-        const files = getFilesForCurrentFolder(), path = currentPath.join('/');
-        if (files.length) { files.forEach(f => contentDiv.appendChild(createFileCard(f, path))); }
-        else { const dz = document.createElement('div'); dz.className = 'empty-state'; dz.innerHTML = `<i class="fas fa-cloud-upload-alt"></i><p>No files here yet</p>`; contentDiv.appendChild(dz); }
-    } else {
-        document.getElementById('uploadBtn').classList.add('hidden');
-        document.getElementById('newNoteBtn').classList.remove('hidden');
-        const notes = getNotesForCurrentFolder(), path = currentPath.join('/');
-        if (notes.length) { notes.forEach(n => contentDiv.appendChild(createNoteCard(n, path))); }
-        else { contentDiv.innerHTML += '<div class="empty-state empty-state-note"><i class="fas fa-sticky-note"></i><p>No notes yet. Click + New Note to add.</p></div>'; }
-    }
-}
-
-// ── FIX: search now respects settings toggles ──
-function renderSearch(query) {
-    const results = [];
-    if (docmanSettings.searchFileNames !== false) {
-        for (const path in allFiles) if (allFiles[path]) allFiles[path].forEach(f => { if (f.name.toLowerCase().includes(query)) results.push({ ...f, folder: path, type: 'file' }); });
-    }
-    if (docmanSettings.searchNotes !== false) {
-        for (const path in allNotes) if (allNotes[path]) allNotes[path].forEach(n => { if (n.title.toLowerCase().includes(query) || n.content.toLowerCase().includes(query)) results.push({ ...n, folder: path, type: 'note' }); });
-    }
-    document.getElementById('searchInfo').classList.remove('hidden');
-    document.getElementById('searchInfo').innerHTML = `<i class="fas fa-search"></i> Found ${results.length} result(s) for "${escapeHtml(query)}" <button onclick="clearSearch()">Clear</button>`;
-    const contentDiv = document.getElementById('content');
-    contentDiv.innerHTML = '';
-    document.getElementById('homeBtn').classList.remove('hidden');
-    document.getElementById('uploadBtn').classList.add('hidden');
-    document.getElementById('newNoteBtn').classList.add('hidden');
-    document.getElementById('departmentsSection').innerHTML = '';
-    document.getElementById('breadcrumb').innerHTML = '';
-    document.querySelector('.type-selector').style.display = 'none';
-    if (!results.length) { contentDiv.innerHTML = '<div class="empty-state"><i class="fas fa-search"></i><p>No results found.</p></div>'; }
-    else { results.forEach(item => { if (item.type === 'file') contentDiv.appendChild(createFileCard(item, item.folder)); else contentDiv.appendChild(createNoteCard(item, item.folder)); }); }
-}
-
-function render() {
+function render(){
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
-    if (query) {
-        isSearchMode = true;
+    if(query){
+        isSearchMode=true;
         document.getElementById('clearSearchBtn').classList.remove('hidden');
-        renderSearch(query);
-        updateStats(); attachPressEffects(); return;
+        const results=[];
+        // ── FIX: respect search settings toggles ──
+        if(docmanSettings.searchFileNames !== false)
+            for(const path in allFiles) if(allFiles[path]) allFiles[path].forEach(f=>{ if(f.name.toLowerCase().includes(query)) results.push({...f, folder:path, type:'file'});});
+        if(docmanSettings.searchNotes !== false)
+            for(const path in allNotes) if(allNotes[path]) allNotes[path].forEach(n=>{ if(n.title.toLowerCase().includes(query) || n.content.toLowerCase().includes(query)) results.push({...n, folder:path, type:'note'});});
+        document.getElementById('searchInfo').classList.remove('hidden');
+        document.getElementById('searchInfo').innerHTML = `<i class="fas fa-search"></i> Found ${results.length} result(s) for "${escapeHtml(query)}" <button onclick="clearSearch()">Clear</button>`;
+        const contentDiv = document.getElementById('content');
+        contentDiv.innerHTML = '';
+        document.getElementById('homeBtn').classList.remove('hidden');
+        document.getElementById('uploadBtn').classList.add('hidden');
+        document.getElementById('newNoteBtn').classList.add('hidden');
+        document.getElementById('departmentsSection').innerHTML = '';
+        document.getElementById('breadcrumb').innerHTML = '';
+        document.querySelector('.type-selector').style.display = 'none';
+        if(!results.length) contentDiv.innerHTML = '<div class="empty-state"><i class="fas fa-search"></i><p>No results found.</p></div>';
+        else results.forEach(item => { if(item.type==='file') contentDiv.appendChild(createFileCard(item, item.folder)); else contentDiv.appendChild(createNoteCard(item, item.folder)); });
+        updateStats();
+        attachPressEffects();
+        return;
     }
-    isSearchMode = false;
+    isSearchMode=false;
     document.getElementById('clearSearchBtn').classList.add('hidden');
     document.getElementById('searchInfo').classList.add('hidden');
     document.getElementById('content').innerHTML = '';
-
     const folder = getCurrentFolderObject();
-    if (!folder) { currentPath = []; render(); return; }
+    if(!folder){ currentPath=[]; render(); return; }
+    document.getElementById('homeBtn').classList.toggle('hidden', currentPath.length===0);
+    const isRoot = currentPath.length===0;
 
-    document.getElementById('homeBtn').classList.toggle('hidden', currentPath.length === 0);
-    const isRoot = currentPath.length === 0;
-    const hasSubfolders = Object.keys(folder).length > 0;
+    if(isRoot){
+        const deptIcons = {
+            'REMELT':'fa-fire-flame-curved','CASTER':'fa-industry','HRM':'fa-users','CRM':'fa-microchip',
+            'ANNEALING':'fa-temperature-high','TLL':'fa-gears','SLITTER':'fa-scissors','UTILITY':'fa-bolt',
+        };
+        const deptKeys = Object.keys(fileSystem);
+        const hasDepts = deptKeys.length > 0;
+        let html = '';
+        if(hasDepts){
+            html = '<div class="departments-wrapper"><div class="departments-grid">';
+            for(let dept in fileSystem){
+                const total = countDepartmentFiles(fileSystem[dept], [dept]);
+                const icon = deptIcons[dept] || 'fa-folder';
+                const knownDepts = ['REMELT','CASTER','HRM','CRM','ANNEALING','TLL','SLITTER','UTILITY'];
+                const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? ` style="background:${deptColors[dept]}"` : '';
+                html += `<div class="dept-card" data-dept="${escapeHtml(dept)}">
+                    <div class="dept-oval">
+                        <div class="dept-pill-bg"${pillBgStyle}></div>
+                        <div class="dept-pill-center-icon"><i class="fas ${icon}"></i></div>
+                        <div class="dept-pill-body"><div class="dept-pill-name">${escapeHtml(dept)}</div></div>
+                    </div>
+                    <div class="dept-pill-icon"><span class="dept-count">${total}</span><span class="dept-count-label">Items</span></div>
+                </div>`;
+            }
+            html += `</div><div class="dept-hub"><div class="dept-hub-circle"><span class="dept-hub-text">DEPARTMENT</span><div class="dept-hub-knob" onclick="showInfo()" ontouchstart=""><i class="fas fa-info dept-hub-icon"></i></div></div></div></div>`;
+        }
+        html += `<div class="dept-add-footer"><button class="dept-add-btn" onclick="addNewDepartment()"><span class="dept-add-btn-icon"><i class="fas fa-plus"></i></span><span class="dept-add-btn-label">Add Department</span></button></div>`;
+        document.getElementById('departmentsSection').innerHTML = html;
+        document.getElementById('homeBtn').classList.add('hidden');
+        document.getElementById('uploadBtn').classList.add('hidden');
+        document.getElementById('newNoteBtn').classList.add('hidden');
+        if(hasDepts){ attachDepartmentPressEffects(); drawDeptConnectorsWhenStable(); }
+    } else document.getElementById('departmentsSection').innerHTML = '';
+
+    const hasSubfolders = Object.keys(folder).length>0;
     const isLeafFolder = !isRoot && !hasSubfolders;
     const typeSelector = document.querySelector('.type-selector');
-    if (typeSelector) typeSelector.style.display = isLeafFolder ? 'flex' : 'none';
+    if(typeSelector) typeSelector.style.display = isLeafFolder ? 'flex' : 'none';
+    if(isLeafFolder){
+        if(currentActiveTab==='pdfs'){ document.getElementById('uploadBtn').classList.remove('hidden'); document.getElementById('newNoteBtn').classList.add('hidden'); }
+        else { document.getElementById('uploadBtn').classList.add('hidden'); document.getElementById('newNoteBtn').classList.remove('hidden'); }
+    } else { document.getElementById('uploadBtn').classList.add('hidden'); document.getElementById('newNoteBtn').classList.add('hidden'); }
 
-    if (isRoot) { renderHome(); }
-    else { renderFolder(folder); }
-
-    if (!isRoot && !isLeafFolder) { document.getElementById('uploadBtn').classList.add('hidden'); document.getElementById('newNoteBtn').classList.add('hidden'); }
-    if (isLeafFolder) renderLeaf();
-
+    if(!isRoot){
+        const folderCardEl = document.createElement('div');
+        folderCardEl.className = 'current-folder-card';
+        const parentPath = currentPath.slice(0, -1);
+        const pathHtml = `<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-home"></i> <span style="color:#3b82f6">Home</span></span>` +
+            parentPath.map((p,i) => `<span class="cf-sep"> / </span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})">${escapeHtml(p)}</span>`).join('') +
+            `<span class="cf-sep"> / </span><span class="cf-part cf-part-current">${escapeHtml(currentPath[currentPath.length-1])}</span>`;
+        folderCardEl.innerHTML = `<div class="cf-path-row">${pathHtml}</div><div class="cf-bottom-row"><div class="cf-folder-name">${escapeHtml(currentPath[currentPath.length-1])}</div><div class="cf-folder-icon"><i class="fas fa-folder"></i><i class="fas fa-star cf-star"></i></div></div>`;
+        document.getElementById('content').appendChild(folderCardEl);
+    }
+    if(!isRoot){
+        const actionDiv = document.createElement('div');
+        actionDiv.className = 'action-bar';
+        actionDiv.innerHTML = `<div class="action-dots action-dots-left"><span></span><span></span><span></span><span></span><span></span><span></span></div><div class="action-btns-wrap"><div class="action-btns-row"><button class="action-btn action-btn-rename" onclick="renameCurrentFolder()"><i class="fas fa-edit"></i> Rename Folder</button><button class="action-btn action-btn-delete" onclick="deleteCurrentFolder()"><i class="fas fa-trash-alt"></i> Delete Folder</button></div><div class="action-btns-row"><button class="action-btn action-btn-back" onclick="goBack()"><i class="fas fa-arrow-left"></i> Back</button><button class="action-btn action-btn-add" onclick="addNewFolder()"><i class="fas fa-plus"></i> Add Subfolder</button></div></div><div class="action-dots action-dots-right"><span></span><span></span><span></span><span></span><span></span><span></span></div>`;
+        const _contentEl = document.getElementById('content');
+        const _folderCardInDom = _contentEl.querySelector('.current-folder-card');
+        if(_folderCardInDom) _contentEl.insertBefore(actionDiv, _folderCardInDom);
+        else _contentEl.appendChild(actionDiv);
+    }
+    if(!isRoot && hasSubfolders){
+        for(let key in folder){
+            const folderCard = createCard(key, () => { navigateWithPageTurn(() => { currentPath.push(key); render(); }, 'forward'); }, true);
+            document.getElementById('content').appendChild(folderCard);
+        }
+    }
+    if(isLeafFolder){
+        if(currentActiveTab==='pdfs'){
+            const files = getFilesForCurrentFolder(), path = currentPath.join('/');
+            if(files.length) files.forEach(f=>document.getElementById('content').appendChild(createFileCard(f,path)));
+            else { const dz=document.createElement('div'); dz.className='empty-state'; dz.innerHTML=`<i class="fas fa-cloud-upload-alt"></i><p>No files here yet</p>`; document.getElementById('content').appendChild(dz); }
+        } else {
+            const notes = getNotesForCurrentFolder(), path = currentPath.join('/');
+            if(notes.length) notes.forEach(n=>document.getElementById('content').appendChild(createNoteCard(n,path)));
+            else document.getElementById('content').innerHTML += '<div class="empty-state empty-state-note"><i class="fas fa-sticky-note"></i><p>No notes yet. Click + New Note to add.</p></div>';
+        }
+    }
     updateStats();
     attachPressEffects();
-    if (isRoot) attachDepartmentPressEffects();
 }
+
+
 
 function drawDeptConnectorsWhenStable(attempt) {
     attempt = attempt || 0;
