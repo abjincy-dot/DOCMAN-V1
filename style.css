@@ -1691,9 +1691,8 @@ margin-left: -33px;
 
 cursor: pointer; 
 z-index: 3; 
-pointer-events: none;
+pointer-events: none; 
 position: relative; 
-
 background: radial-gradient( 
 circle at 35% 28%, 
 #ffffff   0%, 
