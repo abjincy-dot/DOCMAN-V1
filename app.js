@@ -883,30 +883,27 @@ function closeImageViewer() {
 // ============================================================
 
 let isSharing = false;
+let shareTimeout = null;
 
 async function handlePdfFile(fileData, fileName) {
-    const fileSizeMB = fileData.size / (1024 * 1024);
-    const threshold = docmanSettings.pdfThreshold || 20;
     const openMode = docmanSettings.pdfOpen || 'external';
-
-    // If user selected "DOCMAN Viewer" in settings, always use built-in viewer
+    
     if (openMode === 'docman') {
+        // Use built-in viewer
         openPdfViewer(fileData, fileName);
-        return;
-    }
-
-    // External mode - use share API or download
-    // For large files, always use external app
-    if (fileSizeMB > threshold) {
+    } else {
+        // Always use external/share
         await sharePdfExternally(fileData, fileName);
-        return;
     }
-
-    // For small/medium PDFs in external mode, use built-in viewer
-    openPdfViewer(fileData, fileName);
 }
 
 async function sharePdfExternally(fileData, fileName) {
+    // Clear any stale share state
+    if (shareTimeout) {
+        clearTimeout(shareTimeout);
+        shareTimeout = null;
+    }
+
     if (isSharing) {
         showToast('Please wait, sharing is in progress...', true);
         return;
@@ -914,25 +911,37 @@ async function sharePdfExternally(fileData, fileName) {
 
     try {
         isSharing = true;
+        
+        // Create file for sharing
         const file = new File([fileData], fileName, { type: 'application/pdf' });
 
+        // Check if Web Share API is available
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
                 await navigator.share({
                     files: [file],
                     title: fileName
                 });
+                // Share completed successfully
+                showToast('Shared: ' + fileName);
             } catch (shareErr) {
                 if (shareErr.name === 'AbortError') {
+                    // User cancelled - silently handle
                     console.log('Share cancelled by user');
                 } else if (shareErr.name === 'NotAllowedError') {
+                    // Share API not allowed - fallback to download
                     showToast('Share not allowed. Downloading instead...');
                     downloadPdf(fileData, fileName);
                 } else {
-                    throw shareErr;
+                    // Other error - try download fallback
+                    console.warn('Share error:', shareErr);
+                    showToast('Opening in external app failed. Downloading instead...');
+                    downloadPdf(fileData, fileName);
                 }
             }
         } else {
+            // Web Share API not available - download
+            showToast('Share not available. Downloading...');
             downloadPdf(fileData, fileName);
         }
     } catch (err) {
@@ -942,12 +951,15 @@ async function sharePdfExternally(fileData, fileName) {
                 downloadPdf(fileData, fileName);
             } catch (downloadErr) {
                 console.error('Download fallback failed:', downloadErr);
+                showToast('Could not open or download file', true);
             }
         }
     } finally {
-        setTimeout(() => {
+        // Reset share state after a delay to prevent rapid re-triggering
+        shareTimeout = setTimeout(() => {
             isSharing = false;
-        }, 800);
+            shareTimeout = null;
+        }, 1500);
     }
 }
 
@@ -969,7 +981,7 @@ function downloadPdf(fileData, fileName) {
 }
 
 // ============================================================
-// BUILT-IN PDF VIEWER - FIXED (full page, scrollable, no zoom)
+// BUILT-IN PDF VIEWER - FIXED
 // ============================================================
 
 function openPdfViewer(fileData, fileName) {
@@ -997,9 +1009,9 @@ function openPdfViewer(fileData, fileName) {
                 <i class="fas fa-download"></i> Download
             </button>
         </div>
-        <div class="pdf-viewer-body" style="flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;background:#2a2a2a;padding:16px;">
-            <div style="width:100%;max-width:900px;background:#fff;border-radius:4px;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
-                <iframe src="${url}" style="width:100%;height:auto;min-height:80vh;border:none;background:#fff;display:block;" allowfullscreen></iframe>
+        <div class="pdf-viewer-body" style="flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;background:#2a2a2a;padding:16px;position:relative;">
+            <div id="pdfContainer" style="width:100%;max-width:900px;background:#fff;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.3);overflow:auto;position:relative;">
+                <iframe id="pdfIframe" src="${url}" style="width:100%;height:100vh;min-height:600px;border:none;background:#fff;display:block;" allowfullscreen></iframe>
             </div>
         </div>
     `;
@@ -1010,25 +1022,42 @@ function openPdfViewer(fileData, fileName) {
     viewer._fileName = fileName;
     viewer._fileData = fileData;
 
-    // Ensure the iframe loads with proper scrolling
-    const iframe = viewer.querySelector('iframe');
+    // Fix: Ensure iframe displays full PDF with scrolling
+    const iframe = viewer.querySelector('#pdfIframe');
+    const container = viewer.querySelector('#pdfContainer');
+
     if (iframe) {
+        iframe.style.width = '100%';
+        iframe.style.height = '100vh';
+        iframe.style.minHeight = '600px';
+        iframe.style.border = 'none';
+        iframe.style.display = 'block';
+        iframe.setAttribute('scrolling', 'yes');
+        iframe.setAttribute('allowfullscreen', 'true');
+
         iframe.onload = function() {
-            // Set iframe height to content height
             try {
                 const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                if (iframeDoc) {
-                    const height = iframeDoc.body.scrollHeight || iframeDoc.documentElement.scrollHeight;
+                if (iframeDoc && iframeDoc.body) {
+                    iframeDoc.body.style.margin = '0';
+                    iframeDoc.body.style.padding = '0';
+                    iframeDoc.body.style.width = '100%';
+                    iframeDoc.body.style.overflow = 'auto';
+                    const height = iframeDoc.body.scrollHeight || iframeDoc.documentElement.scrollHeight || 800;
                     iframe.style.height = Math.max(height + 20, '80vh') + 'px';
                 }
             } catch (e) {
-                // Cross-origin - use a reasonable height
                 iframe.style.height = '90vh';
             }
         };
+
+        iframe.onerror = function() {
+            iframe.style.height = '90vh';
+        };
+
+        iframe.src = iframe.src;
     }
 
-    // Handle escape key for closing
     const escHandler = function(e) {
         if (e.key === 'Escape') {
             closePdfViewer();
@@ -1050,6 +1079,10 @@ function closePdfViewer() {
         }
         viewer.remove();
         isSharing = false;
+        if (shareTimeout) {
+            clearTimeout(shareTimeout);
+            shareTimeout = null;
+        }
     }
 }
 
