@@ -765,13 +765,21 @@ function attachDepartmentPressEffects() {
     document.querySelectorAll('.dept-card').forEach(card => {
         if (!card.dataset.dept) return;
         const oval = card.querySelector('.dept-oval');
-        if (oval) oval.addEventListener('touchstart', () => {}, { passive: false });
+        if (oval) {
+            oval.addEventListener('touchstart', () => {}, { passive: false });
+            oval.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectDepartment(card.dataset.dept);
+            });
+        }
         card.onclick = (e) => {
             if (e.target.closest('.dept-hub-knob')) return;
+            if (e.target.closest('.dept-oval')) return;
             selectDepartment(card.dataset.dept);
         };
     });
 }
+
 
 function triggerUpload() { document.getElementById('fileInput').click(); }
 function triggerNewNote() { openNewNoteModal(); }
