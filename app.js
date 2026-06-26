@@ -55,8 +55,17 @@ function getFileType(fileName) {
 }
 
 function getFileSizeLabel(file) {
-    if (!file || !file.size) return '';
-    const bytes = file.size;
+    if (!file) return '';
+    let bytes = 0;
+
+    if (file.size) {
+        bytes = file.size;
+    } else if (file.fileData instanceof Blob) {
+        bytes = file.fileData.size;
+    } else if (file.dataUrl && typeof file.dataUrl === 'string') {
+        bytes = Math.round((file.dataUrl.length * 3) / 4);
+    }
+
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
@@ -193,7 +202,7 @@ let docmanSettings = loadSettings();
 // ============================================================
 
 const DB_NAME = 'DocmanDB';
-const DB_VERSION = 10;
+const DB_VERSION = 11;
 let db = null;
 let allFiles = {};
 let allNotes = {};
@@ -257,14 +266,32 @@ async function saveAllFilesToDB() {
 
     for (const folderPath in allFiles) {
         if (allFiles[folderPath]?.length) {
-            const files = allFiles[folderPath].map(f => ({
-                name: f.name,
-                type: f.type,
-                fileData: f.fileData instanceof Blob ? f.fileData : f.fileData,
-                uploadedAt: f.uploadedAt || Date.now(),
-                favourite: f.favourite || false,
-                size: f.fileData?.size || 0
-            }));
+            const files = allFiles[folderPath].map(f => {
+                // If we have a Blob, store it directly
+                if (f.fileData instanceof Blob) {
+                    return {
+                        name: f.name,
+                        type: f.type,
+                        fileData: f.fileData,
+                        uploadedAt: f.uploadedAt || Date.now(),
+                        favourite: f.favourite || false,
+                        size: f.fileData.size || 0
+                    };
+                }
+                // If we have dataUrl (legacy), keep it
+                if (f.dataUrl) {
+                    return {
+                        name: f.name,
+                        type: f.type,
+                        dataUrl: f.dataUrl,
+                        uploadedAt: f.uploadedAt || Date.now(),
+                        favourite: f.favourite || false,
+                        size: f.size || 0
+                    };
+                }
+                // Fallback
+                return f;
+            });
             await store.put({ id: folderPath, folderPath, files });
         }
     }
@@ -284,7 +311,7 @@ async function saveAllNotesToDB() {
 }
 
 // ============================================================
-// FILE DATA LOADING (LAZY)
+// FILE DATA LOADING (LAZY) - WITH FALLBACK
 // ============================================================
 
 async function loadFileData(folderPath, fileName) {
@@ -296,11 +323,81 @@ async function loadFileData(folderPath, fileName) {
             req.onsuccess = () => resolve(req.result);
             req.onerror = () => reject(req.error);
         });
+
         const fileEntry = result?.files?.find(f => f.name === fileName);
-        return fileEntry?.fileData || null;
+        if (!fileEntry) return null;
+
+        // CASE 1: Already a Blob
+        if (fileEntry.fileData instanceof Blob) {
+            return fileEntry.fileData;
+        }
+
+        // CASE 2: Base64 dataUrl (legacy) - Convert on the fly
+        if (fileEntry.dataUrl && typeof fileEntry.dataUrl === 'string') {
+            try {
+                const response = await fetch(fileEntry.dataUrl);
+                const blob = await response.blob();
+
+                // Cache it back to IndexedDB for next time
+                await cacheFileAsBlob(folderPath, fileName, blob, fileEntry);
+
+                return blob;
+            } catch (e) {
+                console.warn('Failed to convert base64 to blob:', e);
+                return null;
+            }
+        }
+
+        return null;
     } catch (e) {
         console.warn('Failed to load file data:', e);
         return null;
+    }
+}
+
+async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
+    try {
+        const tx = db.transaction('files', 'readwrite');
+        const store = tx.objectStore('files');
+        const result = await new Promise((resolve, reject) => {
+            const req = store.get(folderPath);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+
+        if (result) {
+            const fileIndex = result.files.findIndex(f => f.name === fileName);
+            if (fileIndex !== -1) {
+                result.files[fileIndex] = {
+                    name: fileName,
+                    type: blob.type || existingEntry?.type || 'application/octet-stream',
+                    fileData: blob,
+                    uploadedAt: existingEntry?.uploadedAt || Date.now(),
+                    favourite: existingEntry?.favourite || false,
+                    size: blob.size
+                };
+                await store.put(result);
+
+                // Update in-memory cache too
+                if (allFiles[folderPath]) {
+                    const idx = allFiles[folderPath].findIndex(f => f.name === fileName);
+                    if (idx !== -1) {
+                        allFiles[folderPath][idx] = {
+                            name: fileName,
+                            type: blob.type || existingEntry?.type || 'application/octet-stream',
+                            fileData: blob,
+                            uploadedAt: existingEntry?.uploadedAt || Date.now(),
+                            favourite: existingEntry?.favourite || false,
+                            size: blob.size,
+                            _hasData: true,
+                            _isBase64: false
+                        };
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to cache file as blob:', e);
     }
 }
 
@@ -315,15 +412,98 @@ async function loadAllFileMetadata() {
 
     allFiles = {};
     for (const item of results) {
-        allFiles[item.folderPath] = item.files.map(f => ({
-            name: f.name,
-            type: f.type,
-            uploadedAt: f.uploadedAt || Date.now(),
-            favourite: f.favourite || false,
-            size: f.fileData?.size || f.size || 0,
-            _hasData: !!f.fileData
-        }));
+        allFiles[item.folderPath] = item.files.map(f => {
+            let size = f.size || 0;
+            if (!size && f.fileData instanceof Blob) {
+                size = f.fileData.size;
+            } else if (!size && f.dataUrl && typeof f.dataUrl === 'string') {
+                size = Math.round((f.dataUrl.length * 3) / 4);
+            }
+
+            return {
+                name: f.name,
+                type: f.type,
+                uploadedAt: f.uploadedAt || Date.now(),
+                favourite: f.favourite || false,
+                size: size,
+                fileData: f.fileData instanceof Blob ? f.fileData : null,
+                dataUrl: f.dataUrl || null,
+                _hasData: !!(f.fileData instanceof Blob || f.dataUrl),
+                _isBase64: !!(f.dataUrl && typeof f.dataUrl === 'string')
+            };
+        });
     }
+}
+
+// ============================================================
+// MIGRATION: Convert Base64 to Blob
+// ============================================================
+
+async function migrateBase64ToBlob() {
+    console.log('Checking for files to migrate...');
+    let migrated = 0;
+    let needsSave = false;
+
+    const tx = db.transaction('files', 'readwrite');
+    const store = tx.objectStore('files');
+    const results = await new Promise((resolve, reject) => {
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+
+    for (const item of results) {
+        const files = item.files || [];
+        let folderChanged = false;
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+
+            // Check if this file has a base64 dataUrl
+            if (file.dataUrl && typeof file.dataUrl === 'string' && file.dataUrl.startsWith('data:')) {
+                try {
+                    const response = await fetch(file.dataUrl);
+                    const blob = await response.blob();
+
+                    files[i] = {
+                        name: file.name,
+                        type: file.type || blob.type || 'application/octet-stream',
+                        fileData: blob,
+                        uploadedAt: file.uploadedAt || Date.now(),
+                        favourite: file.favourite || false,
+                        size: blob.size
+                    };
+                    migrated++;
+                    folderChanged = true;
+                    needsSave = true;
+                } catch (e) {
+                    console.warn('Failed to migrate file:', file.name, e);
+                }
+            } else if (file.fileData instanceof Blob) {
+                // Already a Blob, ensure size is set
+                if (!file.size && file.fileData) {
+                    files[i].size = file.fileData.size;
+                    folderChanged = true;
+                    needsSave = true;
+                }
+            }
+        }
+
+        if (folderChanged) {
+            await store.put({ id: item.folderPath, folderPath: item.folderPath, files });
+        }
+    }
+
+    if (migrated > 0) {
+        console.log(`✅ Migrated ${migrated} files to Blob storage`);
+        showToast(`Migrated ${migrated} files to Blob storage`);
+    } else {
+        console.log('No files needed migration');
+    }
+
+    // Reload metadata after migration
+    await loadAllFileMetadata();
+    render();
 }
 
 // ============================================================
@@ -2025,7 +2205,7 @@ function importBackupData(file) {
                 allNotes = backup.allNotes || {};
                 deptColors = backup.deptColors || {};
 
-                // Import file metadata - files will be loaded lazily when opened
+                // Import file metadata
                 if (backup.fileMetadata) {
                     for (const path in backup.fileMetadata) {
                         if (backup.fileMetadata[path]) {
@@ -2044,7 +2224,6 @@ function importBackupData(file) {
                 await saveFolderStructure();
                 await saveDeptColors();
                 await saveAllNotesToDB();
-                // Note: Files will be saved with metadata only, actual data will be loaded on demand
                 await saveAllFilesToDB();
 
                 currentPath = [];
@@ -2140,8 +2319,6 @@ function renderStoragePanel() {
 async function renderStorageDetailPanel() {
     const body = document.getElementById('storageDetailBody');
     body.innerHTML = '<div class="storage-detail-loading"><i class="fas fa-spinner fa-spin"></i> Calculating…</div>';
-
-    const b64ToBytes = (b64) => Math.round((b64.length * 3) / 4);
 
     let pdfBytes = 0,
         imgBytes = 0,
@@ -2856,22 +3033,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load data
     showLoadingSkeleton();
     await initDB();
-    await loadAllFileMetadata();
 
-    // Load notes
-    const notesReq = db.transaction('notes', 'readonly').objectStore('notes').getAll();
-    notesReq.onsuccess = () => {
-        allNotes = {};
-        for (let item of notesReq.result) {
-            allNotes[item.folderPath] = item.notes;
-        }
-        render();
-        if (typeof window !== "undefined") {
-            window.docmanReady = true;
-        }
-    };
-
-    // Load folder structure
+    // Load folder structure first
     const folderReq = db.transaction('folderStructure', 'readonly').objectStore('folderStructure').get('structure');
     folderReq.onsuccess = () => {
         if (folderReq.result) {
@@ -2915,8 +3078,33 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (deptColorsReq.result) {
                 deptColors = deptColorsReq.result.value;
             }
-            render();
         };
+
+        // Load file metadata
+        loadAllFileMetadata().then(() => {
+            // Load notes
+            const notesReq = db.transaction('notes', 'readonly').objectStore('notes').getAll();
+            notesReq.onsuccess = () => {
+                allNotes = {};
+                for (let item of notesReq.result) {
+                    allNotes[item.folderPath] = item.notes;
+                }
+                render();
+
+                // Run migration if needed (only once)
+                const migrationRun = localStorage.getItem('docman_migration_done');
+                if (!migrationRun) {
+                    setTimeout(async () => {
+                        await migrateBase64ToBlob();
+                        localStorage.setItem('docman_migration_done', 'true');
+                    }, 1500);
+                }
+
+                if (typeof window !== "undefined") {
+                    window.docmanReady = true;
+                }
+            };
+        });
     };
 
     attachPressEffects();
@@ -2988,10 +3176,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.closeImageViewer = closeImageViewer;
     window.showInfo = showInfo;
     window.closeDeptInfo = closeDeptInfo;
-    window.addNewFolder = addNewFolder;
-    window.addNewDepartment = addNewDepartment;
-    window.renameCurrentFolder = renameCurrentFolder;
-    window.deleteCurrentFolder = deleteCurrentFolder;
 });
 
 // ============================================================
