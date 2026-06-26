@@ -762,12 +762,17 @@ function drawDeptConnectors() {
 }
 
 function attachDepartmentPressEffects() {
-    document.querySelectorAll('.dept-oval').forEach(oval => {
-        oval.addEventListener('touchstart', () => {}, { passive: false });
-        const card = oval.closest('.dept-card');
-        if (card) oval.onclick = () => selectDepartment(card.dataset.dept);
+    document.querySelectorAll('.dept-card').forEach(card => {
+        if (!card.dataset.dept) return;
+        const oval = card.querySelector('.dept-oval');
+        if (oval) oval.addEventListener('touchstart', () => {}, { passive: false });
+        card.onclick = (e) => {
+            if (e.target.closest('.dept-hub-knob')) return;
+            selectDepartment(card.dataset.dept);
+        };
     });
 }
+
 
 function triggerUpload() { document.getElementById('fileInput').click(); }
 function triggerNewNote() { openNewNoteModal(); }
