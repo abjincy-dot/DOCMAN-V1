@@ -824,7 +824,7 @@ async function openFile(fileName, folderPath) {
     if (fileType === 'image') {
         openImageViewer(fileData, fileName);
     } else if (fileType === 'pdf') {
-        await sharePdfFile(fileData, fileName);
+        await handlePdfFile(fileData, fileName);
     } else {
         showConfirmModal(`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
             if (confirmed) {
@@ -879,12 +879,34 @@ function closeImageViewer() {
 }
 
 // ============================================================
-// PDF SHARING - FIXED
+// PDF HANDLING - FIXED
 // ============================================================
 
 let isSharing = false;
 
-async function sharePdfFile(fileData, fileName) {
+async function handlePdfFile(fileData, fileName) {
+    const fileSizeMB = fileData.size / (1024 * 1024);
+    const threshold = docmanSettings.pdfThreshold || 20;
+    const openMode = docmanSettings.pdfOpen || 'external';
+
+    // If user selected "DOCMAN Viewer" in settings, always use built-in viewer
+    if (openMode === 'docman') {
+        openPdfViewer(fileData, fileName);
+        return;
+    }
+
+    // External mode - use share API or download
+    // For large files, always use external app
+    if (fileSizeMB > threshold) {
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
+
+    // For small/medium PDFs in external mode, use built-in viewer
+    openPdfViewer(fileData, fileName);
+}
+
+async function sharePdfExternally(fileData, fileName) {
     if (isSharing) {
         showToast('Please wait, sharing is in progress...', true);
         return;
@@ -892,24 +914,6 @@ async function sharePdfFile(fileData, fileName) {
 
     try {
         isSharing = true;
-
-        // Check if built-in viewer is enabled
-        if (docmanSettings.pdfOpen === 'docman') {
-            openPdfViewer(fileData, fileName);
-            return;
-        }
-
-        // Check file size against threshold
-        const fileSizeMB = fileData.size / (1024 * 1024);
-        const threshold = docmanSettings.pdfThreshold || 20;
-
-        if (fileSizeMB <= threshold) {
-            // Small PDF - use built-in viewer
-            openPdfViewer(fileData, fileName);
-            return;
-        }
-
-        // Large PDF - use share or download
         const file = new File([fileData], fileName, { type: 'application/pdf' });
 
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -965,7 +969,7 @@ function downloadPdf(fileData, fileName) {
 }
 
 // ============================================================
-// BUILT-IN PDF VIEWER
+// BUILT-IN PDF VIEWER - FIXED (full page, scrollable, no zoom)
 // ============================================================
 
 function openPdfViewer(fileData, fileName) {
@@ -984,7 +988,7 @@ function openPdfViewer(fileData, fileName) {
     viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
 
     viewer.innerHTML = `
-        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:12px;flex-shrink:0;">
+        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:2;min-height:52px;">
             <button onclick="closePdfViewer()" style="background:none;border:none;color:#e2e8f0;font-size:1.2rem;cursor:pointer;padding:4px 8px;">
                 <i class="fas fa-times"></i>
             </button>
@@ -993,8 +997,10 @@ function openPdfViewer(fileData, fileName) {
                 <i class="fas fa-download"></i> Download
             </button>
         </div>
-        <div class="pdf-viewer-body" style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:#2a2a2a;padding:12px;">
-            <iframe src="${url}" style="width:100%;height:100%;border:none;background:#fff;border-radius:4px;" allowfullscreen></iframe>
+        <div class="pdf-viewer-body" style="flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;background:#2a2a2a;padding:16px;">
+            <div style="width:100%;max-width:900px;background:#fff;border-radius:4px;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+                <iframe src="${url}" style="width:100%;height:auto;min-height:80vh;border:none;background:#fff;display:block;" allowfullscreen></iframe>
+            </div>
         </div>
     `;
 
@@ -1003,6 +1009,34 @@ function openPdfViewer(fileData, fileName) {
     viewer._url = url;
     viewer._fileName = fileName;
     viewer._fileData = fileData;
+
+    // Ensure the iframe loads with proper scrolling
+    const iframe = viewer.querySelector('iframe');
+    if (iframe) {
+        iframe.onload = function() {
+            // Set iframe height to content height
+            try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                if (iframeDoc) {
+                    const height = iframeDoc.body.scrollHeight || iframeDoc.documentElement.scrollHeight;
+                    iframe.style.height = Math.max(height + 20, '80vh') + 'px';
+                }
+            } catch (e) {
+                // Cross-origin - use a reasonable height
+                iframe.style.height = '90vh';
+            }
+        };
+    }
+
+    // Handle escape key for closing
+    const escHandler = function(e) {
+        if (e.key === 'Escape') {
+            closePdfViewer();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+    viewer._escHandler = escHandler;
 }
 
 function closePdfViewer() {
@@ -1010,6 +1044,9 @@ function closePdfViewer() {
     if (viewer) {
         if (viewer._url) {
             URL.revokeObjectURL(viewer._url);
+        }
+        if (viewer._escHandler) {
+            document.removeEventListener('keydown', viewer._escHandler);
         }
         viewer.remove();
         isSharing = false;
