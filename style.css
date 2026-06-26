@@ -1246,7 +1246,6 @@ margin-left: -20px;
 padding-left: 0; 
 }
 
-
 .departments-wrapper { 
 display: flex; 
 flex-direction: row; 
@@ -1255,9 +1254,9 @@ position: relative;
 width: 100%; 
 gap: 0; 
 padding: 8px 0; 
-overflow: visible;
-pointer-events: none;
+overflow: visible; 
 }
+
 
 .departments-grid { 
 display: flex; 
@@ -1559,23 +1558,24 @@ display:none !important;
 }
 
 
+
 .dept-oval { 
 position: relative; 
 display: flex; 
 align-items: center;
+
 flex: 1;
 min-height: 54px;
 overflow: hidden;
 cursor: pointer;
+
 border-radius: 999px 0 0 999px;
 clip-path: none !important;
 transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), filter 0.18s ease;
 will-change: transform;
 -webkit-tap-highlight-color: transparent;
-pointer-events: auto !important;
-}
 
-
+} 
 .dept-oval:hover  { transform: translateX(4px) scale(1.013); filter: brightness(1.10); } 
 .dept-oval:active { filter: brightness(0.88); }
 
@@ -1690,8 +1690,7 @@ justify-content: center;
 margin-left: -33px;
 
 cursor: pointer; 
-z-index: 3; 
-pointer-events: none; 
+z-index: 10; 
 position: relative; 
 background: radial-gradient( 
 circle at 35% 28%, 
