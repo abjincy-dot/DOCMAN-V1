@@ -764,14 +764,27 @@ function drawDeptConnectors() {
 function attachDepartmentPressEffects() {
     document.querySelectorAll('.dept-card').forEach(card => {
         if (!card.dataset.dept) return;
-        const oval = card.querySelector('.dept-oval');
+        const newCard = card.cloneNode(true);
+        card.parentNode.replaceChild(newCard, card);
+        const oval = newCard.querySelector('.dept-oval');
+        const pill = newCard.querySelector('.dept-pill-icon');
         if (oval) {
-            oval.addEventListener('touchstart', () => {}, { passive: false });
+            oval.style.pointerEvents = 'auto';
+            oval.style.cursor = 'pointer';
             oval.addEventListener('click', (e) => {
                 e.stopPropagation();
-                selectDepartment(card.dataset.dept);
+                selectDepartment(newCard.dataset.dept);
             });
+            oval.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectDepartment(newCard.dataset.dept);
+            }, { passive: false });
         }
+        if (pill) pill.style.pointerEvents = 'none';
+    });
+}
+
         card.onclick = (e) => {
             if (e.target.closest('.dept-hub-knob')) return;
             if (e.target.closest('.dept-oval')) return;
