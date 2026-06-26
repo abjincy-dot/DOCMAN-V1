@@ -770,12 +770,10 @@ function drawDeptConnectors() {
 }
 
 function attachDepartmentPressEffects() {
-    document.querySelectorAll('.dept-card').forEach(card => {
-        // Prevent long-press OS popup on the oval image area
-        const oval = card.querySelector('.dept-oval');
-        if (oval) oval.addEventListener('touchstart', () => {}, { passive: false });
-        // Click on the whole card navigates into the department
-        card.onclick = () => selectDepartment(card.dataset.dept);
+    document.querySelectorAll('.dept-oval').forEach(oval => {
+        oval.addEventListener('touchstart', () => {}, { passive: false });
+        const card = oval.closest('.dept-card');
+        if (card) oval.onclick = () => selectDepartment(card.dataset.dept);
     });
 }
 
@@ -972,7 +970,7 @@ function pressHandler(e) {
 function attachPressEffects() {
     const themeBtn = document.getElementById('themeToggle');
     if (themeBtn) themeBtn.onclick = toggleTheme;
-    const selectors = ['#homeBtn','.type-btn','#uploadBtn','#newNoteBtn','.action-btn','.fav-file-btn','.fav-note-btn','.rename-file-btn','.delete-file-btn','.rename-note-btn','.delete-note-btn','.clear-search','.modal-close','.modal-footer button','.breadcrumb-item','.card','.dept-oval','#closeImageViewer'];
+    const selectors = ['#homeBtn','.type-btn','#uploadBtn','#newNoteBtn','.action-btn','.fav-file-btn','.fav-note-btn','.rename-file-btn','.delete-file-btn','.rename-note-btn','.delete-note-btn','.clear-search','.modal-close','.modal-footer button','.breadcrumb-item','.card','#closeImageViewer'];
     document.querySelectorAll(selectors.join(',')).forEach(el => {
         el.removeEventListener('click', pressHandler); el.removeEventListener('touchstart', pressHandler, { passive: false }); el.removeEventListener('mousedown', pressHandler);
         el.addEventListener('mousedown', pressHandler); el.addEventListener('touchstart', pressHandler, { passive: false });
