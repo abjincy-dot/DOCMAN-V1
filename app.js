@@ -583,7 +583,7 @@ function renderHome() {
     document.getElementById('homeBtn').classList.add('hidden');
     document.getElementById('uploadBtn').classList.add('hidden');
     document.getElementById('newNoteBtn').classList.add('hidden');
-    if (hasDepts) { attachDepartmentPressEffects(); drawDeptConnectorsWhenStable(); }
+    if (hasDepts) { drawDeptConnectorsWhenStable(); }
 }
 
 function renderFolder(folder) {
@@ -682,7 +682,9 @@ function render() {
     if (!isRoot && !isLeafFolder) { document.getElementById('uploadBtn').classList.add('hidden'); document.getElementById('newNoteBtn').classList.add('hidden'); }
     if (isLeafFolder) renderLeaf();
 
-    updateStats(); attachPressEffects();
+    updateStats();
+    attachPressEffects();
+    if (isRoot) attachDepartmentPressEffects();
 }
 
 function drawDeptConnectorsWhenStable(attempt) {
