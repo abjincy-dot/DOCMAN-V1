@@ -773,7 +773,6 @@ function attachDepartmentPressEffects() {
     });
 }
 
-
 function triggerUpload() { document.getElementById('fileInput').click(); }
 function triggerNewNote() { openNewNoteModal(); }
 function clearSearch() {
