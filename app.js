@@ -770,10 +770,12 @@ function drawDeptConnectors() {
 }
 
 function attachDepartmentPressEffects() {
-    document.querySelectorAll('.dept-oval').forEach(oval => {
-        oval.addEventListener('touchstart', () => {}, { passive: false });
-        const card = oval.closest('.dept-card');
-        if (card) oval.onclick = () => selectDepartment(card.dataset.dept);
+    document.querySelectorAll('.dept-card').forEach(card => {
+        // Prevent long-press OS popup on the oval image area
+        const oval = card.querySelector('.dept-oval');
+        if (oval) oval.addEventListener('touchstart', () => {}, { passive: false });
+        // Click on the whole card navigates into the department
+        card.onclick = () => selectDepartment(card.dataset.dept);
     });
 }
 
