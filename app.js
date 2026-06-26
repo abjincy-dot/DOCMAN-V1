@@ -1381,4 +1381,3 @@ document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
 document.addEventListener('touchstart', function(e) {
     if (e.target.tagName==='IMG' || e.target.classList.contains('logo-tray-icon') || e.target.classList.contains('header-gear-icon') || e.target.classList.contains('home-icon-img')) { e.preventDefault(); }
 }, { passive: false });
-ju
