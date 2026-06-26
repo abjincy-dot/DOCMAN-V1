@@ -784,16 +784,6 @@ function attachDepartmentPressEffects() {
         if (pill) pill.style.pointerEvents = 'none';
     });
 }
-
-        card.onclick = (e) => {
-            if (e.target.closest('.dept-hub-knob')) return;
-            if (e.target.closest('.dept-oval')) return;
-            selectDepartment(card.dataset.dept);
-        };
-    });
-}
-
-
 function triggerUpload() { document.getElementById('fileInput').click(); }
 function triggerNewNote() { openNewNoteModal(); }
 function clearSearch() {
