@@ -1,5 +1,5 @@
 const APP_VERSION = '1.0.0';
-const CACHE = 'docman-v93';
+const CACHE = 'docman-v94';
 const ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.json', './Images/settings-tray.png', './Images/settings-neon.png'];
 
 self.addEventListener('install', e => {
