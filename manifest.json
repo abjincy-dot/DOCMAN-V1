@@ -6,7 +6,6 @@
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
   "theme_color": "#0a1128",
   "background_color": "#0a1128",
   "orientation": "portrait-primary",
