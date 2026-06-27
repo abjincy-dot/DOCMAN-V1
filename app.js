@@ -954,15 +954,17 @@ async function sharePdfExternally(fileData, fileName) {
             }
         }
     
-    } finally {
+        } finally {
         isSharing = false;
         if (shareTimeout) {
             clearTimeout(shareTimeout);
             shareTimeout = null;
         }
     }
+}
 
 function downloadPdf(fileData, fileName) {
+
     try {
         const url = URL.createObjectURL(fileData);
         const a = document.createElement('a');
