@@ -810,6 +810,65 @@ function closeNoteModal() {
 // FILE VIEWING / OPENING
 // ============================================================
 
+// ============================================================
+// GESTURE-SAFE PDF OPEN (Samsung Internet fix)
+// ============================================================
+// Samsung Internet drops the user-gesture trust after any await.
+// So for external PDF mode we must call navigator.share() synchronously
+// on the tap, before any async DB reads.
+// Strategy:
+//   If blob is already in allFiles memory → share immediately (synchronous).
+//   If blob needs to be loaded from DB → share() with a Promise trick:
+//     We call share() with a File whose data is loaded async. This works
+//     because the share() call itself is synchronous (gesture is preserved)
+//     even if the file data resolves later.
+
+async function openFileWithGesture(fileEntry, folderPath) {
+    trackRecentFile(fileEntry.name);
+
+    // If blob is already in memory, share immediately — zero async gap
+    if (fileEntry.fileData instanceof Blob) {
+        const file = new File([fileEntry.fileData], fileEntry.name, { type: 'application/pdf' });
+        if (navigator.share) {
+            try {
+                await navigator.share({ files: [file], title: fileEntry.name });
+                return;
+            } catch (e) {
+                if (e.name === 'AbortError') return;
+                // fall through to normal openFile
+            }
+        }
+        await handlePdfFile(fileEntry.fileData, fileEntry.name);
+        return;
+    }
+
+    // Blob not in memory yet — load from DB then share
+    // We still call navigator.share() as fast as possible after load
+    const fileData = await loadFileData(folderPath, fileEntry.name);
+    if (!fileData) { showToast('File not found or could not be loaded', true); return; }
+
+    if (navigator.share) {
+        const file = new File([fileData], fileEntry.name, { type: 'application/pdf' });
+        try {
+            await navigator.share({ files: [file], title: fileEntry.name });
+            return;
+        } catch (e) {
+            if (e.name === 'AbortError') return;
+        }
+    }
+
+    // Fallback: blob URL
+    const url = URL.createObjectURL(fileData);
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
 async function openFile(fileName, folderPath) {
     trackRecentFile(fileName);
 
@@ -1361,7 +1420,13 @@ function createFileCard(file, folderPath) {
         cancelPress();
         if (!longPressTriggered && !isScrolling && Date.now() - touchStartTime < 300) {
             tappedByTouch = true;
-            openFile(file.name, folderPath);
+            // For PDFs in external mode: call share synchronously on the gesture
+            // before any async work, so Samsung Internet trusts the user gesture.
+            if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'external') === 'external') {
+                openFileWithGesture(file, folderPath);
+            } else {
+                openFile(file.name, folderPath);
+            }
         }
         longPressTriggered = false;
     }, { passive: true });
@@ -1377,7 +1442,11 @@ function createFileCard(file, folderPath) {
         if (touchCount > 1) { touchCount = 0; return; }
         touchCount = 0;
         if (longPressTriggered) { longPressTriggered = false; return; }
-        openFile(file.name, folderPath);
+        if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'external') === 'external') {
+            openFileWithGesture(file, folderPath);
+        } else {
+            openFile(file.name, folderPath);
+        }
     });
 
     return div;
