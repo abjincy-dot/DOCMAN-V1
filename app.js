@@ -75,13 +75,17 @@ function getFileSizeLabel(file) {
 // HAPTIC FEEDBACK
 // ============================================================
 
-const haptic = {
-    press: () => navigator.vibrate?.(12),
-    longPress: () => navigator.vibrate?.(18),
-    success: () => navigator.vibrate?.([10, 30, 10]),
-    warning: () => navigator.vibrate?.(30),
-    toggle: () => navigator.vibrate?.([10, 20, 10]),
-};
+const haptic = (() => {
+    const cap = () => window.Capacitor?.Plugins?.Haptics;
+    const imp = style => cap()?.impact({ style }) ?? navigator.vibrate?.(style === 'Heavy' ? 30 : style === 'Medium' ? 18 : 12);
+    return {
+        press:     () => imp('Light'),
+        longPress: () => imp('Medium'),
+        success:   () => cap() ? imp('Medium') : navigator.vibrate?.([10, 30, 10]),
+        warning:   () => imp('Heavy'),
+        toggle:    () => imp('Light'),
+    };
+})();
 
 // ============================================================
 // TOAST NOTIFICATIONS
