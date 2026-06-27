@@ -983,23 +983,21 @@ function downloadPdf(fileData, fileName) {
 // ============================================================
 // BUILT-IN PDF VIEWER - FIXED
 // ============================================================
-
 function openPdfViewer(fileData, fileName) {
-    const url = URL.createObjectURL(fileData);
-
-    // Remove existing viewer if any
     const existing = document.getElementById('pdfViewer');
     if (existing) {
         if (existing._url) URL.revokeObjectURL(existing._url);
         existing.remove();
     }
 
+    const url = URL.createObjectURL(fileData);
+
     const viewer = document.createElement('div');
     viewer.id = 'pdfViewer';
     viewer.className = 'pdf-viewer';
     viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
 
-        viewer.innerHTML = `
+    viewer.innerHTML = `
         <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:2;min-height:52px;">
             <button onclick="closePdfViewer()" style="background:none;border:none;color:#e2e8f0;font-size:1.2rem;cursor:pointer;padding:4px 8px;">
                 <i class="fas fa-times"></i>
@@ -1009,53 +1007,16 @@ function openPdfViewer(fileData, fileName) {
                 <i class="fas fa-download"></i> Download
             </button>
         </div>
-        <div class="pdf-viewer-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column;background:#2a2a2a;position:relative;">
-            <iframe id="pdfIframe" src="${url}" style="flex:1;width:100%;height:100%;border:none;background:#fff;display:block;" allowfullscreen></iframe>
+        <div id="pdfViewerBody" style="flex:1;overflow-y:auto;overflow-x:hidden;background:#2a2a2a;padding:12px 8px;-webkit-overflow-scrolling:touch;">
+            <div id="pdfCanvasContainer" style="display:flex;flex-direction:column;align-items:center;gap:8px;"></div>
+            <div id="pdfLoadingMsg" style="color:#94a3b8;text-align:center;padding:40px 0;font-family:Inter,sans-serif;font-size:0.9rem;">Loading PDF…</div>
         </div>
     `;
 
     document.body.appendChild(viewer);
-
     viewer._url = url;
     viewer._fileName = fileName;
     viewer._fileData = fileData;
-
-
-    // Fix: Ensure iframe displays full PDF with scrolling
-    const iframe = viewer.querySelector('#pdfIframe');
-    const container = viewer.querySelector('#pdfContainer');
-
-    if (iframe) {
-        iframe.style.width = '100%';
-        iframe.style.height = '100vh';
-        iframe.style.minHeight = '600px';
-        iframe.style.border = 'none';
-        iframe.style.display = 'block';
-        iframe.setAttribute('scrolling', 'yes');
-        iframe.setAttribute('allowfullscreen', 'true');
-
-        iframe.onload = function() {
-            try {
-                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                if (iframeDoc && iframeDoc.body) {
-                    iframeDoc.body.style.margin = '0';
-                    iframeDoc.body.style.padding = '0';
-                    iframeDoc.body.style.width = '100%';
-                    iframeDoc.body.style.overflow = 'auto';
-                    const height = iframeDoc.body.scrollHeight || iframeDoc.documentElement.scrollHeight || 800;
-                    iframe.style.height = Math.max(height + 20, '80vh') + 'px';
-                }
-            } catch (e) {
-                iframe.style.height = '90vh';
-            }
-        };
-
-        iframe.onerror = function() {
-            iframe.style.height = '90vh';
-        };
-
-        iframe.src = iframe.src;
-    }
 
     const escHandler = function(e) {
         if (e.key === 'Escape') {
@@ -1065,7 +1026,74 @@ function openPdfViewer(fileData, fileName) {
     };
     document.addEventListener('keydown', escHandler);
     viewer._escHandler = escHandler;
+
+    // Load PDF.js from CDN if not already loaded
+    function renderPdfWithPdfJs(pdfUrl) {
+        const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        function doRender() {
+            const pdfjsLib = window['pdfjs-dist/build/pdf'];
+            pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+
+            const container = document.getElementById('pdfCanvasContainer');
+            const loadingMsg = document.getElementById('pdfLoadingMsg');
+            const viewerBody = document.getElementById('pdfViewerBody');
+            if (!container || !viewerBody) return;
+
+            const viewerWidth = viewerBody.clientWidth - 16;
+
+            pdfjsLib.getDocument(pdfUrl).promise.then(function(pdfDoc) {
+                if (loadingMsg) loadingMsg.style.display = 'none';
+                const totalPages = pdfDoc.numPages;
+
+                function renderPage(pageNum) {
+                    pdfDoc.getPage(pageNum).then(function(page) {
+                        const viewport = page.getViewport({ scale: 1 });
+                        const scale = viewerWidth / viewport.width;
+                        const scaledViewport = page.getViewport({ scale });
+
+                        const canvas = document.createElement('canvas');
+                        canvas.width = scaledViewport.width;
+                        canvas.height = scaledViewport.height;
+                        canvas.style.cssText = 'display:block;max-width:100%;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);background:#fff;';
+
+                        container.appendChild(canvas);
+
+                        page.render({
+                            canvasContext: canvas.getContext('2d'),
+                            viewport: scaledViewport
+                        }).promise.then(function() {
+                            if (pageNum < totalPages) renderPage(pageNum + 1);
+                        });
+                    });
+                }
+
+                renderPage(1);
+            }).catch(function(err) {
+                if (loadingMsg) loadingMsg.textContent = 'Could not render PDF: ' + err.message;
+            });
+        }
+
+        if (window['pdfjs-dist/build/pdf']) {
+            doRender();
+        } else {
+            const script = document.createElement('script');
+            script.src = PDFJS_CDN;
+            script.onload = doRender;
+            script.onerror = function() {
+                const msg = document.getElementById('pdfLoadingMsg');
+                if (msg) msg.textContent = 'Failed to load PDF renderer. Check your connection.';
+            };
+            document.head.appendChild(script);
+        }
+    }
+
+    renderPdfWithPdfJs(url);
 }
+
+
+
 
 function closePdfViewer() {
     const viewer = document.getElementById('pdfViewer');
