@@ -911,11 +911,11 @@ async function sharePdfExternally(fileData, fileName) {
         isSharing = false;
     }
 
-    // Android: default browsers (Samsung Internet, MIUI, etc.) and standalone PWA
-    // both fail to show "Open with..." when using window.open(blobUrl, '_blank').
-    // Strategy (in order of reliability):
-    //   1. Web Share API with File — works on Chrome & most modern Android browsers
-    //   2. Android Intent URL — forces system viewer chooser on any Android browser
+    // Android: blob URLs are origin-scoped and default browsers treat them as
+    // downloads. The only cross-browser way to get "Open with..." on Android is:
+    //   1. Web Share API with File — works on Chrome & modern Android browsers
+    //   2. Serve via Service Worker as a real HTTP URL, then open it — works on
+    //      default/old Android browsers that don't support canShare({ files })
     //   3. Download fallback — last resort
     if (isAndroid()) {
         const file = new File([fileData], fileName, { type: 'application/pdf' });
@@ -929,33 +929,18 @@ async function sharePdfExternally(fileData, fileName) {
                 if (shareErr.name === 'AbortError') {
                     return; // User dismissed — do nothing
                 }
-                // Share failed — fall through to Intent URL
+                // Share failed — fall through
             }
         }
 
-        // Attempt 2: Android Intent URL
-        // Launches via intent:// so Android shows the native "Open with..." chooser
-        // in any browser, including the default browser and standalone PWA mode.
+        // Attempt 2: Serve via Service Worker as a real HTTP URL
+        // The SW intercepts a unique URL and responds with the PDF blob,
+        // giving Android a proper http:// URL it can hand to a PDF viewer.
         try {
-            const blobUrl = URL.createObjectURL(fileData);
-            const intentUrl =
-                'intent://' + blobUrl.replace(/^blob:https?:\/\/[^/]+/, '') +
-                '#Intent;' +
-                'action=android.intent.action.VIEW;' +
-                'type=application/pdf;' +
-                'S.browser_fallback_url=' + encodeURIComponent(blobUrl) + ';' +
-                'end';
-
-            const a = document.createElement('a');
-            a.href = intentUrl;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
-            return;
-        } catch (intentErr) {
-            console.warn('Intent URL failed:', intentErr);
+            const served = await serveFileViaServiceWorker(fileData, fileName);
+            if (served) return;
+        } catch (swErr) {
+            console.warn('SW serve failed:', swErr);
         }
 
         // Attempt 3: Download fallback
@@ -1016,6 +1001,75 @@ async function sharePdfExternally(fileData, fileName) {
             shareTimeout = null;
         }
     }
+}
+
+// ============================================================
+// SERVICE WORKER FILE SERVE (Android default browser fix)
+// ============================================================
+
+// Stores pending blobs that the SW will serve as real HTTP URLs.
+const _swPendingFiles = {};
+
+async function serveFileViaServiceWorker(blob, fileName) {
+    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+        return false;
+    }
+
+    // Create a unique token for this file
+    const token = 'pdf_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const url = location.origin + location.pathname.replace(/\/[^\/]*$/, '/') + '__pdf__/' + token + '/' + encodeURIComponent(fileName);
+
+    // Store the blob where the SW message handler can pick it up
+    _swPendingFiles[token] = blob;
+
+    // Tell the SW to expect a request for this token
+    navigator.serviceWorker.controller.postMessage({
+        type: 'REGISTER_PDF',
+        token,
+        fileName
+    });
+
+    // Listen for one fetch from the SW to hand off the blob
+    const channel = new MessageChannel();
+    navigator.serviceWorker.controller.postMessage(
+        { type: 'PING' }, [channel.port2]
+    );
+
+    // Give the SW a moment to register, then open the URL
+    await new Promise(r => setTimeout(r, 80));
+
+    // Intercept SW fetch requests for this token via a shared Map on the page
+    // The SW will postMessage back asking for the blob
+    const opened = window.open(url, '_blank');
+    if (!opened) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    // Clean up after 2 minutes
+    setTimeout(() => { delete _swPendingFiles[token]; }, 120000);
+    return true;
+}
+
+// Handle blob requests from the Service Worker
+if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', async (event) => {
+        if (event.data?.type === 'FETCH_PDF_BLOB') {
+            const { token } = event.data;
+            const blob = _swPendingFiles[token];
+            if (blob && event.ports[0]) {
+                // Send the blob back to the SW via ArrayBuffer
+                const buf = await blob.arrayBuffer();
+                event.ports[0].postMessage({ buffer: buf, type: blob.type }, [buf]);
+                delete _swPendingFiles[token];
+            }
+        }
+    });
 }
 
 function downloadPdf(fileData, fileName) {
