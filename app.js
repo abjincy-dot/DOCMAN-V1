@@ -1047,32 +1047,69 @@ function openPdfViewer(fileData, fileName) {
                 if (loadingMsg) loadingMsg.style.display = 'none';
                 const totalPages = pdfDoc.numPages;
 
-                function renderPage(pageNum) {
+                // Create placeholder divs for all pages first
+                const placeholders = [];
+                for (let i = 1; i <= totalPages; i++) {
+                    const placeholder = document.createElement('div');
+                    placeholder.dataset.page = i;
+                    placeholder.dataset.rendered = 'false';
+                    placeholder.style.cssText = `width:${viewerWidth}px;min-height:200px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;`;
+                    placeholder.textContent = 'Page ' + i;
+                    container.appendChild(placeholder);
+                    placeholders.push(placeholder);
+                }
+
+                function renderPageInto(placeholder, pageNum) {
+                    if (placeholder.dataset.rendered === 'true') return;
+                    placeholder.dataset.rendered = 'true';
+                    placeholder.textContent = '';
+
                     pdfDoc.getPage(pageNum).then(function(page) {
                         const viewport = page.getViewport({ scale: 1 });
-                        const dpr = window.devicePixelRatio || 2;
+                        const dpr = Math.min(window.devicePixelRatio || 1, 2);
                         const scale = (viewerWidth / viewport.width) * dpr;
-
                         const scaledViewport = page.getViewport({ scale });
 
                         const canvas = document.createElement('canvas');
                         canvas.width = scaledViewport.width;
                         canvas.height = scaledViewport.height;
-                        canvas.style.cssText = `display:block;width:${viewerWidth}px;height:${scaledViewport.height / dpr}px;max-width:100%;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);background:#fff;`;
+                        canvas.style.cssText = `display:block;width:${viewerWidth}px;height:${scaledViewport.height / dpr}px;max-width:100%;border-radius:4px;`;
+                        placeholder.style.minHeight = '';
+                        placeholder.style.alignItems = '';
+                        placeholder.style.justifyContent = '';
+                        placeholder.appendChild(canvas);
 
-
-                        container.appendChild(canvas);
-page.render({
-canvasContext: canvas.getContext('2d'),
-viewport: scaledViewport
-                        }).promise.then(function() {
-                            if (pageNum < totalPages) renderPage(pageNum + 1);
+                        page.render({
+                            canvasContext: canvas.getContext('2d'),
+                            viewport: scaledViewport
                         });
                     });
                 }
 
-                renderPage(1);
-            }).catch(function(err) {
+                // Render first 2 pages immediately
+                if (placeholders[0]) renderPageInto(placeholders[0], 1);
+                if (placeholders[1]) renderPageInto(placeholders[1], 2);
+
+                // Lazy render remaining pages on scroll into view
+                if ('IntersectionObserver' in window) {
+                    const observer = new IntersectionObserver(function(entries) {
+                        entries.forEach(function(entry) {
+                            if (entry.isIntersecting) {
+                                const el = entry.target;
+                                renderPageInto(el, parseInt(el.dataset.page));
+                                observer.unobserve(el);
+                            }
+                        });
+                    }, { rootMargin: '200px' });
+
+                    placeholders.slice(2).forEach(function(p) { observer.observe(p); });
+                } else {
+                    placeholders.slice(2).forEach(function(p, i) {
+                        setTimeout(function() { renderPageInto(p, i + 3); }, i * 300);
+                    });
+                }
+
+  }).catch(function(err) {
                 if (loadingMsg) loadingMsg.textContent = 'Could not render PDF: ' + err.message;
             });
         }
