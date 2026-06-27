@@ -813,26 +813,18 @@ function closeNoteModal() {
 async function openFile(fileName, folderPath) {
     trackRecentFile(fileName);
 
-    const fileType = getFileType(fileName);
-
-    // Open a blank window synchronously within the user gesture so Safari
-    // doesn't block it. We navigate it to the blob URL after the async load.
-    let preOpenedWindow = null;
-    if (fileType === 'pdf' && (docmanSettings.pdfOpen || 'external') !== 'docman') {
-        preOpenedWindow = window.open('', '_blank');
-    }
-
     const fileData = await loadFileData(folderPath, fileName);
     if (!fileData) {
-        if (preOpenedWindow) preOpenedWindow.close();
         showToast('File not found or could not be loaded', true);
         return;
     }
 
+    const fileType = getFileType(fileName);
+
     if (fileType === 'image') {
         openImageViewer(fileData, fileName);
     } else if (fileType === 'pdf') {
-        await handlePdfFile(fileData, fileName, preOpenedWindow);
+        await handlePdfFile(fileData, fileName);
     } else {
         showConfirmModal(`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
             if (confirmed) {
@@ -887,36 +879,87 @@ function closeImageViewer() {
 }
 
 // ============================================================
-// PDF HANDLING
+// PDF HANDLING - FIXED
 // ============================================================
 
-async function handlePdfFile(fileData, fileName, preOpenedWindow) {
+let isSharing = false;
+let shareTimeout = null;
+
+async function handlePdfFile(fileData, fileName) {
     const openMode = docmanSettings.pdfOpen || 'external';
     
     if (openMode === 'docman') {
-        if (preOpenedWindow) preOpenedWindow.close();
+        // Use built-in viewer
         openPdfViewer(fileData, fileName);
     } else {
-        await sharePdfExternally(fileData, fileName, preOpenedWindow);
+        // Always use external/share
+        await sharePdfExternally(fileData, fileName);
     }
 }
 
-async function sharePdfExternally(fileData, fileName, preOpenedWindow) {
+async function sharePdfExternally(fileData, fileName) {
+    if (shareTimeout) {
+        clearTimeout(shareTimeout);
+        shareTimeout = null;
+    }
+
+    if (isSharing) {
+        isSharing = false;
+    }
+
+
     try {
-        const url = URL.createObjectURL(fileData);
-        if (preOpenedWindow && !preOpenedWindow.closed) {
-            // Navigate the pre-opened window (opened synchronously in the gesture)
-            // so Safari doesn't block it as a popup
-            preOpenedWindow.location.href = url;
+        isSharing = true;
+        
+        // Create file for sharing
+        const file = new File([fileData], fileName, { type: 'application/pdf' });
+
+        // Check if Web Share API is available
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({
+                    files: [file],
+                    title: fileName
+                });
+                // Share completed successfully
+                showToast('Shared: ' + fileName);
+            } catch (shareErr) {
+                if (shareErr.name === 'AbortError') {
+                    // User cancelled - silently handle
+                    console.log('Share cancelled by user');
+                } else if (shareErr.name === 'NotAllowedError') {
+                    // Share API not allowed - fallback to download
+                    showToast('Share not allowed. Downloading instead...');
+                    downloadPdf(fileData, fileName);
+                } else {
+                    // Other error - try download fallback
+                    console.warn('Share error:', shareErr);
+                    showToast('Opening in external app failed. Downloading instead...');
+                    downloadPdf(fileData, fileName);
+                }
+            }
         } else {
-            // Fallback: try opening directly (may be blocked on Safari)
-            window.open(url, '_blank');
+            // Web Share API not available - download
+            showToast('Share not available. Downloading...');
+            downloadPdf(fileData, fileName);
         }
-        // Revoke after delay to allow tab to fully load the blob
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
-        if (preOpenedWindow && !preOpenedWindow.closed) preOpenedWindow.close();
-        showToast('Could not open PDF: ' + err.message, true);
+        if (err.name !== 'AbortError') {
+            showToast('Could not open PDF: ' + err.message, true);
+            try {
+                downloadPdf(fileData, fileName);
+            } catch (downloadErr) {
+                console.error('Download fallback failed:', downloadErr);
+                showToast('Could not open or download file', true);
+            }
+        }
+    
+        } finally {
+        isSharing = false;
+        if (shareTimeout) {
+            clearTimeout(shareTimeout);
+            shareTimeout = null;
+        }
     }
 }
 
@@ -957,8 +1000,8 @@ function openPdfViewer(fileData, fileName) {
 
     viewer.innerHTML = `
         <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:2;min-height:52px;">
-            <button onclick="closePdfViewer()" style="background:none;border:none;color:#e2e8f0;font-size:1.2rem;cursor:pointer;padding:4px 8px;">
-                <i class="fas fa-times"></i>
+            <button onclick="closePdfViewer()" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#e2e8f0;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;letter-spacing:0.02em;">
+                Close
             </button>
             <span class="pdf-viewer-title" style="flex:1;color:#e2e8f0;font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(fileName)}</span>
             <button onclick="downloadPdfFromViewer()" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#e2e8f0;padding:6px 12px;cursor:pointer;font-size:0.8rem;">
@@ -1106,6 +1149,11 @@ function closePdfViewer() {
             document.removeEventListener('keydown', viewer._escHandler);
         }
         viewer.remove();
+        isSharing = false;
+        if (shareTimeout) {
+            clearTimeout(shareTimeout);
+            shareTimeout = null;
+        }
     }
 }
 
@@ -1285,9 +1333,12 @@ function createFileCard(file, folderPath) {
 
     div.addEventListener('touchmove', checkMove, { passive: true });
 
+    let tappedByTouch = false;
+
     div.addEventListener('touchend', (e) => {
         cancelPress();
         if (!longPressTriggered && !isScrolling && Date.now() - touchStartTime < 300) {
+            tappedByTouch = true;
             openFile(file.name, folderPath);
         }
         longPressTriggered = false;
@@ -1300,6 +1351,7 @@ function createFileCard(file, folderPath) {
     div.addEventListener('mouseleave', cancelPress);
 
     div.addEventListener('click', (e) => {
+        if (tappedByTouch) { tappedByTouch = false; return; }
         if (touchCount > 1) { touchCount = 0; return; }
         touchCount = 0;
         if (longPressTriggered) { longPressTriggered = false; return; }
@@ -1398,9 +1450,12 @@ function createNoteCard(note, folderPath) {
 
     div.addEventListener('touchmove', checkMove, { passive: true });
 
+    let tappedByTouch = false;
+
     div.addEventListener('touchend', (e) => {
         cancelPress();
         if (!longPressTriggered && !isScrolling && Date.now() - touchStartTime < 300) {
+            tappedByTouch = true;
             openNote({ ...note, folder: folderPath });
         }
         longPressTriggered = false;
@@ -1413,6 +1468,7 @@ function createNoteCard(note, folderPath) {
     div.addEventListener('mouseleave', cancelPress);
 
     div.addEventListener('click', () => {
+        if (tappedByTouch) { tappedByTouch = false; return; }
         if (touchCount > 1) { touchCount = 0; return; }
         touchCount = 0;
         if (longPressTriggered) { longPressTriggered = false; return; }
