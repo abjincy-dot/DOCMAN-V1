@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family: monospace; font-size: 13px; padding: 16px; background: #111; color: #eee; }
+.ok { color: #4f4; }
+.no { color: #f44; }
+button { margin-top: 20px; padding: 14px 20px; font-size: 15px; width: 100%; background: #333; color: #fff; border: 1px solid #666; border-radius: 8px; }
+pre { white-space: pre-wrap; word-break: break-all; }
+</style>
+</head>
+<body>
+<pre id="out">Checking...</pre>
+<button onclick="testShare()">Test Share (tap after page loads)</button>
+<script>
+const out = document.getElementById('out');
+function log(msg) { out.textContent += '\n' + msg; }
+
+const ua = navigator.userAgent;
+log('UA: ' + ua);
+log('');
+log('navigator.share: ' + (typeof navigator.share !== 'undefined' ? '✓ YES' : '✗ NO'));
+log('navigator.canShare: ' + (typeof navigator.canShare !== 'undefined' ? '✓ YES' : '✗ NO'));
+
+const testFile = new File(['test'], 'test.pdf', { type: 'application/pdf' });
+if (navigator.canShare) {
+  try {
+    log('canShare({files}): ' + (navigator.canShare({ files: [testFile] }) ? '✓ YES' : '✗ NO'));
+  } catch(e) {
+    log('canShare error: ' + e);
+  }
+} else {
+  log('canShare({files}): N/A');
+}
+
+log('');
+log('standalone PWA: ' + (window.matchMedia('(display-mode: standalone)').matches ? 'YES' : 'NO'));
+log('');
+
+const parts = ua.match(/(Samsung|SamsungBrowser|MIUI|HuaweiBrowser|OPR|EdgA|Chrome|Firefox)\/[\d.]+/gi);
+log('Browsers detected: ' + (parts ? parts.join(', ') : 'unknown'));
+
+async function testShare() {
+  const file = new File(['%PDF-1.4 test'], 'test.pdf', { type: 'application/pdf' });
+  log('\n--- Share Test ---');
+  if (!navigator.share) { log('navigator.share NOT available'); return; }
+  try {
+    await navigator.share({ files: [file], title: 'test.pdf' });
+    log('Share: SUCCESS');
+  } catch(e) {
+    log('Share error: ' + e.name + ' - ' + e.message);
+  }
+}
+</script>
+</body>
+</html>
