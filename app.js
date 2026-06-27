@@ -999,7 +999,7 @@ function openPdfViewer(fileData, fileName) {
     viewer.className = 'pdf-viewer';
     viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
 
-    viewer.innerHTML = `
+        viewer.innerHTML = `
         <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:2;min-height:52px;">
             <button onclick="closePdfViewer()" style="background:none;border:none;color:#e2e8f0;font-size:1.2rem;cursor:pointer;padding:4px 8px;">
                 <i class="fas fa-times"></i>
@@ -1009,10 +1009,8 @@ function openPdfViewer(fileData, fileName) {
                 <i class="fas fa-download"></i> Download
             </button>
         </div>
-        <div class="pdf-viewer-body" style="flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;background:#2a2a2a;padding:16px;position:relative;">
-            <div id="pdfContainer" style="width:100%;max-width:900px;background:#fff;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.3);overflow:auto;position:relative;">
-                <iframe id="pdfIframe" src="${url}" style="width:100%;height:100vh;min-height:600px;border:none;background:#fff;display:block;" allowfullscreen></iframe>
-            </div>
+        <div class="pdf-viewer-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column;background:#2a2a2a;position:relative;">
+            <iframe id="pdfIframe" src="${url}" style="flex:1;width:100%;height:100%;border:none;background:#fff;display:block;" allowfullscreen></iframe>
         </div>
     `;
 
@@ -1021,6 +1019,7 @@ function openPdfViewer(fileData, fileName) {
     viewer._url = url;
     viewer._fileName = fileName;
     viewer._fileData = fileData;
+
 
     // Fix: Ensure iframe displays full PDF with scrolling
     const iframe = viewer.querySelector('#pdfIframe');
