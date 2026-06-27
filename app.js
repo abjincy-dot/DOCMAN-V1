@@ -937,14 +937,10 @@ async function openFile(fileName, folderPath) {
     } else {
         showConfirmModal(`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
             if (confirmed) {
-                const url = URL.createObjectURL(fileData);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = fileName;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                setTimeout(() => URL.revokeObjectURL(url), 10000);
+                nativeDownload(fileData, fileName).catch(err => {
+                    console.error('Download failed:', err);
+                    showToast('Could not download file', true);
+                });
             }
         });
     }
@@ -1107,22 +1103,48 @@ async function sharePdfExternally(fileData, fileName) {
     }
 }
 
-function downloadPdf(fileData, fileName) {
+async function nativeDownload(blob, fileName) {
+    const Filesystem = window.Capacitor?.Plugins?.Filesystem;
+    const Share = window.Capacitor?.Plugins?.Share;
 
-    try {
-        const url = URL.createObjectURL(fileData);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
-        showToast('Downloading: ' + fileName);
-    } catch (err) {
-        console.error('Download failed:', err);
-        showToast('Could not download file', true);
+    if (Filesystem && Share) {
+        try {
+            const reader = new FileReader();
+            const base64 = await new Promise((resolve, reject) => {
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            const result = await Filesystem.writeFile({
+                path: fileName,
+                data: base64,
+                directory: 'CACHE'
+            });
+            await Share.share({ title: fileName, url: result.uri });
+            return;
+        } catch (e) {
+            console.warn('Capacitor download failed, falling back:', e);
+        }
     }
+
+    // PWA / browser fallback
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function downloadPdf(fileData, fileName) {
+    nativeDownload(fileData, fileName)
+        .then(() => showToast('Downloading: ' + fileName))
+        .catch(err => {
+            console.error('Download failed:', err);
+            showToast('Could not download file', true);
+        });
 }
 
 // ============================================================
@@ -2591,13 +2613,13 @@ function exportBackupData() {
     }
 
     const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `docman-backup-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Backup exported');
+    const backupFileName = `docman-backup-${Date.now()}.json`;
+    nativeDownload(blob, backupFileName)
+        .then(() => showToast('Backup exported'))
+        .catch(err => {
+            console.error('Backup export failed:', err);
+            showToast('Could not export backup', true);
+        });
 }
 
 function importBackupData(file) {
