@@ -898,16 +898,15 @@ async function handlePdfFile(fileData, fileName) {
 }
 
 async function sharePdfExternally(fileData, fileName) {
-    // Clear any stale share state
     if (shareTimeout) {
         clearTimeout(shareTimeout);
         shareTimeout = null;
     }
 
     if (isSharing) {
-        showToast('Please wait, sharing is in progress...', true);
-        return;
+        isSharing = false;
     }
+
 
     try {
         isSharing = true;
@@ -954,14 +953,14 @@ async function sharePdfExternally(fileData, fileName) {
                 showToast('Could not open or download file', true);
             }
         }
+    
     } finally {
-        // Reset share state after a delay to prevent rapid re-triggering
-        shareTimeout = setTimeout(() => {
-            isSharing = false;
+        isSharing = false;
+        if (shareTimeout) {
+            clearTimeout(shareTimeout);
             shareTimeout = null;
-        }, 1500);
+        }
     }
-}
 
 function downloadPdf(fileData, fileName) {
     try {
