@@ -202,7 +202,7 @@ let docmanSettings = loadSettings();
 // ============================================================
 
 const DB_NAME = 'DocmanDB';
-const DB_VERSION = 11;
+const DB_VERSION = 12;
 let db = null;
 let allFiles = {};
 let allNotes = {};
@@ -232,6 +232,9 @@ function initDB() {
             if (!db2.objectStoreNames.contains('notes')) {
                 db2.createObjectStore('notes', { keyPath: 'id' });
             }
+            if (!db2.objectStoreNames.contains('blobs')) {
+                db2.createObjectStore('blobs', { keyPath: 'blobId' });
+            }
         };
     });
 }
@@ -260,18 +263,21 @@ async function saveDeptColors() {
 }
 
 async function saveAllFilesToDB() {
-    const tx = db.transaction('files', 'readwrite');
-    const store = tx.objectStore('files');
-    await store.clear();
+    const tx = db.transaction(['files', 'blobs'], 'readwrite');
+    const fileStore = tx.objectStore('files');
+    const blobStore = tx.objectStore('blobs');
+    await fileStore.clear();
+    await blobStore.clear();
 
     for (const folderPath in allFiles) {
         if (allFiles[folderPath]?.length) {
             const files = allFiles[folderPath].map(f => {
                 if (f.fileData instanceof Blob) {
+                    const blobId = folderPath + '/' + f.name;
+                    blobStore.put({ blobId, blob: f.fileData });
                     return {
                         name: f.name,
                         type: f.type,
-                        fileData: f.fileData,
                         uploadedAt: f.uploadedAt || Date.now(),
                         favourite: f.favourite || false,
                         size: f.fileData.size || 0
@@ -289,10 +295,13 @@ async function saveAllFilesToDB() {
                 }
                 return f;
             });
-            await store.put({ id: folderPath, folderPath, files });
+            fileStore.put({ id: folderPath, folderPath, files });
         }
     }
-    tx.commit();
+    await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+    });
 }
 
 async function saveAllNotesToDB() {
@@ -313,10 +322,22 @@ async function saveAllNotesToDB() {
 
 async function loadFileData(folderPath, fileName) {
     try {
+        // Try the dedicated blobs store first
+        const blobId = folderPath + '/' + fileName;
+        const blobTx = db.transaction('blobs', 'readonly');
+        const blobResult = await new Promise((resolve, reject) => {
+            const req = blobTx.objectStore('blobs').get(blobId);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+        if (blobResult?.blob instanceof Blob) {
+            return blobResult.blob;
+        }
+
+        // Fall back to files store (legacy base64 or old inline blob)
         const tx = db.transaction('files', 'readonly');
-        const store = tx.objectStore('files');
         const result = await new Promise((resolve, reject) => {
-            const req = store.get(folderPath);
+            const req = tx.objectStore('files').get(folderPath);
             req.onsuccess = () => resolve(req.result);
             req.onerror = () => reject(req.error);
         });
@@ -325,6 +346,7 @@ async function loadFileData(folderPath, fileName) {
         if (!fileEntry) return null;
 
         if (fileEntry.fileData instanceof Blob) {
+            await cacheFileAsBlob(folderPath, fileName, fileEntry.fileData, fileEntry);
             return fileEntry.fileData;
         }
 
@@ -349,10 +371,20 @@ async function loadFileData(folderPath, fileName) {
 
 async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
     try {
-        const tx = db.transaction('files', 'readwrite');
-        const store = tx.objectStore('files');
+        // Write blob to dedicated store
+        const blobId = folderPath + '/' + fileName;
+        const blobTx = db.transaction('blobs', 'readwrite');
+        blobTx.objectStore('blobs').put({ blobId, blob });
+        await new Promise((resolve, reject) => {
+            blobTx.oncomplete = resolve;
+            blobTx.onerror = () => reject(blobTx.error);
+        });
+
+        // Update files record — strip blob/dataUrl, keep only metadata
+        const fileTx = db.transaction('files', 'readwrite');
+        const fileStore = fileTx.objectStore('files');
         const result = await new Promise((resolve, reject) => {
-            const req = store.get(folderPath);
+            const req = fileStore.get(folderPath);
             req.onsuccess = () => resolve(req.result);
             req.onerror = () => reject(req.error);
         });
@@ -363,28 +395,32 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
                 result.files[fileIndex] = {
                     name: fileName,
                     type: blob.type || existingEntry?.type || 'application/octet-stream',
-                    fileData: blob,
                     uploadedAt: existingEntry?.uploadedAt || Date.now(),
                     favourite: existingEntry?.favourite || false,
                     size: blob.size
                 };
-                await store.put(result);
+                fileStore.put(result);
+            }
+        }
+        await new Promise((resolve, reject) => {
+            fileTx.oncomplete = resolve;
+            fileTx.onerror = () => reject(fileTx.error);
+        });
 
-                if (allFiles[folderPath]) {
-                    const idx = allFiles[folderPath].findIndex(f => f.name === fileName);
-                    if (idx !== -1) {
-                        allFiles[folderPath][idx] = {
-                            name: fileName,
-                            type: blob.type || existingEntry?.type || 'application/octet-stream',
-                            fileData: blob,
-                            uploadedAt: existingEntry?.uploadedAt || Date.now(),
-                            favourite: existingEntry?.favourite || false,
-                            size: blob.size,
-                            _hasData: true,
-                            _isBase64: false
-                        };
-                    }
-                }
+        // Update in-memory allFiles
+        if (allFiles[folderPath]) {
+            const idx = allFiles[folderPath].findIndex(f => f.name === fileName);
+            if (idx !== -1) {
+                allFiles[folderPath][idx] = {
+                    name: fileName,
+                    type: blob.type || existingEntry?.type || 'application/octet-stream',
+                    fileData: blob,
+                    uploadedAt: existingEntry?.uploadedAt || Date.now(),
+                    favourite: existingEntry?.favourite || false,
+                    size: blob.size,
+                    _hasData: true,
+                    _isBase64: false
+                };
             }
         }
     } catch (e) {
@@ -433,12 +469,13 @@ async function loadAllFileMetadata() {
 async function migrateBase64ToBlob() {
     console.log('Checking for files to migrate...');
     let migrated = 0;
-    let needsSave = false;
 
-    const tx = db.transaction('files', 'readwrite');
-    const store = tx.objectStore('files');
+    const tx = db.transaction(['files', 'blobs'], 'readwrite');
+    const fileStore = tx.objectStore('files');
+    const blobStore = tx.objectStore('blobs');
+
     const results = await new Promise((resolve, reject) => {
-        const req = store.getAll();
+        const req = fileStore.getAll();
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
     });
@@ -449,43 +486,52 @@ async function migrateBase64ToBlob() {
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
+            const blobId = item.folderPath + '/' + file.name;
 
             if (file.dataUrl && typeof file.dataUrl === 'string' && file.dataUrl.startsWith('data:')) {
                 try {
                     const response = await fetch(file.dataUrl);
                     const blob = await response.blob();
-
+                    blobStore.put({ blobId, blob });
                     files[i] = {
                         name: file.name,
                         type: file.type || blob.type || 'application/octet-stream',
-                        fileData: blob,
                         uploadedAt: file.uploadedAt || Date.now(),
                         favourite: file.favourite || false,
                         size: blob.size
                     };
                     migrated++;
                     folderChanged = true;
-                    needsSave = true;
                 } catch (e) {
                     console.warn('Failed to migrate file:', file.name, e);
                 }
             } else if (file.fileData instanceof Blob) {
-                if (!file.size && file.fileData) {
-                    files[i].size = file.fileData.size;
-                    folderChanged = true;
-                    needsSave = true;
-                }
+                blobStore.put({ blobId, blob: file.fileData });
+                files[i] = {
+                    name: file.name,
+                    type: file.type || file.fileData.type || 'application/octet-stream',
+                    uploadedAt: file.uploadedAt || Date.now(),
+                    favourite: file.favourite || false,
+                    size: file.fileData.size || file.size || 0
+                };
+                migrated++;
+                folderChanged = true;
             }
         }
 
         if (folderChanged) {
-            await store.put({ id: item.folderPath, folderPath: item.folderPath, files });
+            fileStore.put({ id: item.folderPath, folderPath: item.folderPath, files });
         }
     }
 
+    await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+    });
+
     if (migrated > 0) {
-        console.log(`✅ Migrated ${migrated} files to Blob storage`);
-        showToast(`Migrated ${migrated} files to Blob storage`);
+        console.log(`✅ Migrated ${migrated} files to separate Blob store`);
+        showToast(`Migrated ${migrated} files to optimised storage`);
     } else {
         console.log('No files needed migration');
     }
@@ -2607,9 +2653,10 @@ async function doEraseAllData() {
     deptColors = {};
     await saveFolderStructure();
     await saveDeptColors();
-    const tx = db.transaction(['files', 'notes'], 'readwrite');
+    const tx = db.transaction(['files', 'notes', 'blobs'], 'readwrite');
     tx.objectStore('files').clear();
     tx.objectStore('notes').clear();
+    tx.objectStore('blobs').clear();
     tx.commit();
     currentPath = [];
     closeSettingsPage();
