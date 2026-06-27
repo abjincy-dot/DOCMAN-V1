@@ -902,85 +902,70 @@ function isAndroid() {
 }
 
 async function sharePdfExternally(fileData, fileName) {
-    if (shareTimeout) {
-        clearTimeout(shareTimeout);
-        shareTimeout = null;
-    }
-
-    if (isSharing) {
-        isSharing = false;
-    }
-
-    // Android: blob URLs are origin-scoped and default browsers treat them as
-    // downloads. The only cross-browser way to get "Open with..." on Android is:
-    //   1. Web Share API with File — works on Chrome & modern Android browsers
-    //   2. Serve via Service Worker as a real HTTP URL, then open it — works on
-    //      default/old Android browsers that don't support canShare({ files })
-    //   3. Download fallback — last resort
+    // ── Android ───────────────────────────────────────────────────────────────
+    // blob: URLs are origin-scoped; default Android browsers treat any attempt
+    // to open one in a new tab as a download.  The only approach that reliably
+    // triggers the OS "Open with…" chooser across Chrome, Samsung Internet,
+    // MIUI browser, and standalone-PWA mode is Web Share API with a File object.
+    // We try it unconditionally (not guarded by canShare) because some browsers
+    // report canShare=false yet still execute share() correctly.
     if (isAndroid()) {
         const file = new File([fileData], fileName, { type: 'application/pdf' });
 
-        // Attempt 1: Web Share API with File object
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        // Try Web Share API — works on Chrome, Samsung Internet 12+, and PWA mode
+        if (navigator.share) {
             try {
                 await navigator.share({ files: [file], title: fileName });
                 return;
-            } catch (shareErr) {
-                if (shareErr.name === 'AbortError') {
-                    return; // User dismissed — do nothing
-                }
-                // Share failed — fall through
+            } catch (err) {
+                if (err.name === 'AbortError') return; // user dismissed
+                // NotAllowedError, DataError, etc — fall through to blob URL
+                console.warn('navigator.share failed:', err.name, err.message);
             }
         }
 
-        // Attempt 2: Serve via Service Worker as a real HTTP URL
-        // The SW intercepts a unique URL and responds with the PDF blob,
-        // giving Android a proper http:// URL it can hand to a PDF viewer.
+        // Last resort: open blob URL in new tab.
+        // On Chrome browser (non-standalone) this shows "Open with…".
+        // On default browser it may download — but there is no better option
+        // if share() is completely unavailable.
         try {
-            const served = await serveFileViaServiceWorker(fileData, fileName);
-            if (served) return;
-        } catch (swErr) {
-            console.warn('SW serve failed:', swErr);
+            const url = URL.createObjectURL(fileData);
+            const a = document.createElement('a');
+            a.href = url;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 30000);
+        } catch (e) {
+            downloadPdf(fileData, fileName);
         }
-
-        // Attempt 3: Download fallback
-        downloadPdf(fileData, fileName);
         return;
     }
 
-    // iOS / Desktop path — use Web Share API
+    // ── iOS / Desktop ─────────────────────────────────────────────────────────
     try {
         isSharing = true;
-        
-        // Create file for sharing
         const file = new File([fileData], fileName, { type: 'application/pdf' });
 
-        // Check if Web Share API is available
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
-                await navigator.share({
-                    files: [file],
-                    title: fileName
-                });
-                // Share completed successfully
+                await navigator.share({ files: [file], title: fileName });
                 showToast('Shared: ' + fileName);
             } catch (shareErr) {
                 if (shareErr.name === 'AbortError') {
-                    // User cancelled - silently handle
                     console.log('Share cancelled by user');
                 } else if (shareErr.name === 'NotAllowedError') {
-                    // Share API not allowed - fallback to download
                     showToast('Share not allowed. Downloading instead...');
                     downloadPdf(fileData, fileName);
                 } else {
-                    // Other error - try download fallback
                     console.warn('Share error:', shareErr);
                     showToast('Opening in external app failed. Downloading instead...');
                     downloadPdf(fileData, fileName);
                 }
             }
         } else {
-            // Web Share API not available - download
             showToast('Share not available. Downloading...');
             downloadPdf(fileData, fileName);
         }
@@ -1001,63 +986,6 @@ async function sharePdfExternally(fileData, fileName) {
             shareTimeout = null;
         }
     }
-}
-
-// ============================================================
-// SERVICE WORKER FILE SERVE (Android default browser fix)
-// ============================================================
-
-// Stores pending blobs that the SW will serve as real HTTP URLs.
-const _swPendingFiles = {};
-
-async function serveFileViaServiceWorker(blob, fileName) {
-    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
-        return false;
-    }
-
-    // Create a unique token for this file
-    const token = 'pdf_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    const url = location.origin + location.pathname.replace(/\/[^\/]*$/, '/') + '__pdf__/' + token + '/' + encodeURIComponent(fileName);
-
-    // Store the blob so the SW message handler can return it
-    _swPendingFiles[token] = blob;
-
-    // Give the SW a moment to be ready
-    await new Promise(r => setTimeout(r, 80));
-
-    // Use a hidden iframe to load the PDF URL.
-    // - window.open/_blank triggers the browser download interceptor on Android default browser
-    // - Same-tab navigation would navigate away from the PWA
-    // - An iframe navigation with Content-Disposition:inline causes Android to
-    //   fire the OS "Open with..." intent without leaving the app or triggering downloads
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;';
-    iframe.src = url;
-    document.body.appendChild(iframe);
-    // Remove after enough time for Android to process the intent
-    setTimeout(() => {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    }, 5000);
-
-    // Clean up after 2 minutes
-    setTimeout(() => { delete _swPendingFiles[token]; }, 120000);
-    return true;
-}
-
-// Handle blob requests from the Service Worker
-if (navigator.serviceWorker) {
-    navigator.serviceWorker.addEventListener('message', async (event) => {
-        if (event.data?.type === 'FETCH_PDF_BLOB') {
-            const { token } = event.data;
-            const blob = _swPendingFiles[token];
-            if (blob && event.ports[0]) {
-                // Send the blob back to the SW via ArrayBuffer
-                const buf = await blob.arrayBuffer();
-                event.ports[0].postMessage({ buffer: buf, type: blob.type }, [buf]);
-                delete _swPendingFiles[token];
-            }
-        }
-    });
 }
 
 function downloadPdf(fileData, fileName) {
