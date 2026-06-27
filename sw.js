@@ -1,7 +1,7 @@
 
 
 const APP_VERSION = '1.0.0';
-const CACHE = 'docman-v90'; //  bump this on each deploy
+const CACHE = 'docman-v91'; //  bump this on each deploy
 const ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.json', './Images/settings-tray.png', './Images/settings-neon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
