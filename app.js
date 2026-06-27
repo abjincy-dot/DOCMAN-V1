@@ -911,46 +911,55 @@ async function sharePdfExternally(fileData, fileName) {
         isSharing = false;
     }
 
-    // On Android standalone PWA, window.open() cannot open new tabs and silently
-    // triggers a download instead of the "Open with..." sheet. Use Web Share API
-    // with a File object which reliably shows the native action sheet.
-    // iOS handles navigator.share() correctly via the path below, unchanged.
+    // Android: default browsers (Samsung Internet, MIUI, etc.) and standalone PWA
+    // both fail to show "Open with..." when using window.open(blobUrl, '_blank').
+    // Strategy (in order of reliability):
+    //   1. Web Share API with File — works on Chrome & most modern Android browsers
+    //   2. Android Intent URL — forces system viewer chooser on any Android browser
+    //   3. Download fallback — last resort
     if (isAndroid()) {
         const file = new File([fileData], fileName, { type: 'application/pdf' });
 
+        // Attempt 1: Web Share API with File object
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
                 await navigator.share({ files: [file], title: fileName });
                 return;
             } catch (shareErr) {
                 if (shareErr.name === 'AbortError') {
-                    // User dismissed the sheet — do nothing
-                    return;
+                    return; // User dismissed — do nothing
                 }
-                // Share failed — fall through to blob URL attempt below
+                // Share failed — fall through to Intent URL
             }
         }
 
-        // Fallback: blob URL + window.open (works in Chrome browser, not standalone)
+        // Attempt 2: Android Intent URL
+        // Launches via intent:// so Android shows the native "Open with..." chooser
+        // in any browser, including the default browser and standalone PWA mode.
         try {
-            const url = URL.createObjectURL(fileData);
-            const opened = window.open(url, '_blank');
-            if (!opened) {
-                // Popup blocked — fall back to an anchor click
-                const a = document.createElement('a');
-                a.href = url;
-                a.target = '_blank';
-                a.rel = 'noopener';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            }
-            // Revoke after a delay so the browser has time to read the blob
-            setTimeout(() => URL.revokeObjectURL(url), 30000);
-        } catch (err) {
-            console.warn('Android open failed, falling back to download:', err);
-            downloadPdf(fileData, fileName);
+            const blobUrl = URL.createObjectURL(fileData);
+            const intentUrl =
+                'intent://' + blobUrl.replace(/^blob:https?:\/\/[^/]+/, '') +
+                '#Intent;' +
+                'action=android.intent.action.VIEW;' +
+                'type=application/pdf;' +
+                'S.browser_fallback_url=' + encodeURIComponent(blobUrl) + ';' +
+                'end';
+
+            const a = document.createElement('a');
+            a.href = intentUrl;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+            return;
+        } catch (intentErr) {
+            console.warn('Intent URL failed:', intentErr);
         }
+
+        // Attempt 3: Download fallback
+        downloadPdf(fileData, fileName);
         return;
     }
 
