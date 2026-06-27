@@ -1050,19 +1050,21 @@ function openPdfViewer(fileData, fileName) {
                 function renderPage(pageNum) {
                     pdfDoc.getPage(pageNum).then(function(page) {
                         const viewport = page.getViewport({ scale: 1 });
-                        const scale = viewerWidth / viewport.width;
+                        const dpr = window.devicePixelRatio || 2;
+                        const scale = (viewerWidth / viewport.width) * dpr;
+
                         const scaledViewport = page.getViewport({ scale });
 
                         const canvas = document.createElement('canvas');
                         canvas.width = scaledViewport.width;
                         canvas.height = scaledViewport.height;
-                        canvas.style.cssText = 'display:block;max-width:100%;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);background:#fff;';
+                        canvas.style.cssText = `display:block;width:${viewerWidth}px;height:${scaledViewport.height / dpr}px;max-width:100%;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);background:#fff;`;
+
 
                         container.appendChild(canvas);
-
-                        page.render({
-                            canvasContext: canvas.getContext('2d'),
-                            viewport: scaledViewport
+page.render({
+canvasContext: canvas.getContext('2d'),
+viewport: scaledViewport
                         }).promise.then(function() {
                             if (pageNum < totalPages) renderPage(pageNum + 1);
                         });
