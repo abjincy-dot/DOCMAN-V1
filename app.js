@@ -897,6 +897,10 @@ async function handlePdfFile(fileData, fileName) {
     }
 }
 
+function isAndroid() {
+    return /android/i.test(navigator.userAgent);
+}
+
 async function sharePdfExternally(fileData, fileName) {
     if (shareTimeout) {
         clearTimeout(shareTimeout);
@@ -907,7 +911,35 @@ async function sharePdfExternally(fileData, fileName) {
         isSharing = false;
     }
 
+    // On Android, navigator.share() with files triggers the system download
+    // dialog before the action/share sheet. Instead, open the blob URL directly
+    // so Android shows the "Open with..." action sheet immediately.
+    // iOS handles navigator.share() correctly, so keep that path for iOS.
+    if (isAndroid()) {
+        try {
+            const url = URL.createObjectURL(fileData);
+            // Open in new tab — Android will show the action sheet (Open with...)
+            const opened = window.open(url, '_blank');
+            if (!opened) {
+                // Popup blocked — fall back to an anchor click
+                const a = document.createElement('a');
+                a.href = url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+            // Revoke after a delay so the browser has time to read the blob
+            setTimeout(() => URL.revokeObjectURL(url), 30000);
+        } catch (err) {
+            console.warn('Android open failed, falling back to download:', err);
+            downloadPdf(fileData, fileName);
+        }
+        return;
+    }
 
+    // iOS / Desktop path — use Web Share API
     try {
         isSharing = true;
         
@@ -953,8 +985,7 @@ async function sharePdfExternally(fileData, fileName) {
                 showToast('Could not open or download file', true);
             }
         }
-    
-        } finally {
+    } finally {
         isSharing = false;
         if (shareTimeout) {
             clearTimeout(shareTimeout);
