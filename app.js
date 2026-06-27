@@ -3,7 +3,7 @@
 // Version: 1.0.0
 // ============================================================
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 
 const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY = 'docman_recents_v1';
@@ -813,18 +813,26 @@ function closeNoteModal() {
 async function openFile(fileName, folderPath) {
     trackRecentFile(fileName);
 
+    const fileType = getFileType(fileName);
+
+    // Open a blank window synchronously within the user gesture so Safari
+    // doesn't block it. We navigate it to the blob URL after the async load.
+    let preOpenedWindow = null;
+    if (fileType === 'pdf' && (docmanSettings.pdfOpen || 'external') !== 'docman') {
+        preOpenedWindow = window.open('', '_blank');
+    }
+
     const fileData = await loadFileData(folderPath, fileName);
     if (!fileData) {
+        if (preOpenedWindow) preOpenedWindow.close();
         showToast('File not found or could not be loaded', true);
         return;
     }
 
-    const fileType = getFileType(fileName);
-
     if (fileType === 'image') {
         openImageViewer(fileData, fileName);
     } else if (fileType === 'pdf') {
-        await handlePdfFile(fileData, fileName);
+        await handlePdfFile(fileData, fileName, preOpenedWindow);
     } else {
         showConfirmModal(`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
             if (confirmed) {
@@ -879,38 +887,38 @@ function closeImageViewer() {
 }
 
 // ============================================================
-// PDF HANDLING - FIXED
+// PDF HANDLING
 // ============================================================
 
-let isSharing = false;
-let shareTimeout = null;
-
-async function handlePdfFile(fileData, fileName) {
+async function handlePdfFile(fileData, fileName, preOpenedWindow) {
     const openMode = docmanSettings.pdfOpen || 'external';
     
     if (openMode === 'docman') {
-        // Use built-in viewer
+        if (preOpenedWindow) preOpenedWindow.close();
         openPdfViewer(fileData, fileName);
     } else {
-        // Always use external/share
-        await sharePdfExternally(fileData, fileName);
+        await sharePdfExternally(fileData, fileName, preOpenedWindow);
     }
 }
 
-async function sharePdfExternally(fileData, fileName) {
+async function sharePdfExternally(fileData, fileName, preOpenedWindow) {
     try {
         const url = URL.createObjectURL(fileData);
-        const tab = window.open(url, '_blank');
-        if (!tab) {
-            showToast('Popup blocked. Try allowing popups for this site.', true);
+        if (preOpenedWindow && !preOpenedWindow.closed) {
+            // Navigate the pre-opened window (opened synchronously in the gesture)
+            // so Safari doesn't block it as a popup
+            preOpenedWindow.location.href = url;
+        } else {
+            // Fallback: try opening directly (may be blocked on Safari)
+            window.open(url, '_blank');
         }
-        // Revoke after a delay to allow the tab to load
-        setTimeout(() => URL.revokeObjectURL(url), 30000);
+        // Revoke after delay to allow tab to fully load the blob
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
+        if (preOpenedWindow && !preOpenedWindow.closed) preOpenedWindow.close();
         showToast('Could not open PDF: ' + err.message, true);
     }
 }
-
 
 function downloadPdf(fileData, fileName) {
 
@@ -1098,11 +1106,6 @@ function closePdfViewer() {
             document.removeEventListener('keydown', viewer._escHandler);
         }
         viewer.remove();
-        isSharing = false;
-        if (shareTimeout) {
-            clearTimeout(shareTimeout);
-            shareTimeout = null;
-        }
     }
 }
 
