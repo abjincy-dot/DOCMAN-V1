@@ -1043,18 +1043,23 @@ async function sharePdfExternally(fileData, fileName) {
         // On Chrome browser (non-standalone) this shows "Open with…".
         // On default browser it may download — but there is no better option
         // if share() is completely unavailable.
-        try {
-            const url = URL.createObjectURL(fileData);
-            const a = document.createElement('a');
-            a.href = url;
-            a.target = '_blank';
-            a.rel = 'noopener';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 30000);
-        } catch (e) {
-            downloadPdf(fileData, fileName);
+        // In Capacitor WebView, blob URLs in new tabs don't work — use nativeDownload
+        if (window.Capacitor) {
+            await nativeDownload(fileData, fileName);
+        } else {
+            try {
+                const url = URL.createObjectURL(fileData);
+                const a = document.createElement('a');
+                a.href = url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 30000);
+            } catch (e) {
+                downloadPdf(fileData, fileName);
+            }
         }
         return;
     }
