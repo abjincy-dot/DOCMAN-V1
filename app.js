@@ -898,70 +898,19 @@ async function handlePdfFile(fileData, fileName) {
 }
 
 async function sharePdfExternally(fileData, fileName) {
-    if (shareTimeout) {
-        clearTimeout(shareTimeout);
-        shareTimeout = null;
-    }
-
-    if (isSharing) {
-        isSharing = false;
-    }
-
-
     try {
-        isSharing = true;
-        
-        // Create file for sharing
-        const file = new File([fileData], fileName, { type: 'application/pdf' });
-
-        // Check if Web Share API is available
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            try {
-                await navigator.share({
-                    files: [file],
-                    title: fileName
-                });
-                // Share completed successfully
-                showToast('Shared: ' + fileName);
-            } catch (shareErr) {
-                if (shareErr.name === 'AbortError') {
-                    // User cancelled - silently handle
-                    console.log('Share cancelled by user');
-                } else if (shareErr.name === 'NotAllowedError') {
-                    // Share API not allowed - fallback to download
-                    showToast('Share not allowed. Downloading instead...');
-                    downloadPdf(fileData, fileName);
-                } else {
-                    // Other error - try download fallback
-                    console.warn('Share error:', shareErr);
-                    showToast('Opening in external app failed. Downloading instead...');
-                    downloadPdf(fileData, fileName);
-                }
-            }
-        } else {
-            // Web Share API not available - download
-            showToast('Share not available. Downloading...');
-            downloadPdf(fileData, fileName);
+        const url = URL.createObjectURL(fileData);
+        const tab = window.open(url, '_blank');
+        if (!tab) {
+            showToast('Popup blocked. Try allowing popups for this site.', true);
         }
+        // Revoke after a delay to allow the tab to load
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (err) {
-        if (err.name !== 'AbortError') {
-            showToast('Could not open PDF: ' + err.message, true);
-            try {
-                downloadPdf(fileData, fileName);
-            } catch (downloadErr) {
-                console.error('Download fallback failed:', downloadErr);
-                showToast('Could not open or download file', true);
-            }
-        }
-    
-        } finally {
-        isSharing = false;
-        if (shareTimeout) {
-            clearTimeout(shareTimeout);
-            shareTimeout = null;
-        }
+        showToast('Could not open PDF: ' + err.message, true);
     }
 }
+
 
 function downloadPdf(fileData, fileName) {
 
