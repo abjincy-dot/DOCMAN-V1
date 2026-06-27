@@ -946,18 +946,28 @@ let shareTimeout = null;
 
 async function handlePdfFile(fileData, fileName) {
     const openMode = docmanSettings.pdfOpen || 'external';
-    
+
+    // Samsung Internet blocks Web Share API with files on github.io (NotAllowedError).
+    // Force built-in viewer on Samsung Internet regardless of the external setting.
+    // iOS, Chrome, and all other browsers are unaffected.
+    if (isSamsungBrowser()) {
+        openPdfViewer(fileData, fileName);
+        return;
+    }
+
     if (openMode === 'docman') {
-        // Use built-in viewer
         openPdfViewer(fileData, fileName);
     } else {
-        // Always use external/share
         await sharePdfExternally(fileData, fileName);
     }
 }
 
 function isAndroid() {
     return /android/i.test(navigator.userAgent);
+}
+
+function isSamsungBrowser() {
+    return /SamsungBrowser/i.test(navigator.userAgent);
 }
 
 async function sharePdfExternally(fileData, fileName) {
