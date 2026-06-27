@@ -1019,37 +1019,25 @@ async function serveFileViaServiceWorker(blob, fileName) {
     const token = 'pdf_' + Date.now() + '_' + Math.random().toString(36).slice(2);
     const url = location.origin + location.pathname.replace(/\/[^\/]*$/, '/') + '__pdf__/' + token + '/' + encodeURIComponent(fileName);
 
-    // Store the blob where the SW message handler can pick it up
+    // Store the blob so the SW message handler can return it
     _swPendingFiles[token] = blob;
 
-    // Tell the SW to expect a request for this token
-    navigator.serviceWorker.controller.postMessage({
-        type: 'REGISTER_PDF',
-        token,
-        fileName
-    });
-
-    // Listen for one fetch from the SW to hand off the blob
-    const channel = new MessageChannel();
-    navigator.serviceWorker.controller.postMessage(
-        { type: 'PING' }, [channel.port2]
-    );
-
-    // Give the SW a moment to register, then open the URL
+    // Give the SW a moment to be ready
     await new Promise(r => setTimeout(r, 80));
 
-    // Intercept SW fetch requests for this token via a shared Map on the page
-    // The SW will postMessage back asking for the blob
-    const opened = window.open(url, '_blank');
-    if (!opened) {
-        const a = document.createElement('a');
-        a.href = url;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    }
+    // Use a hidden iframe to load the PDF URL.
+    // - window.open/_blank triggers the browser download interceptor on Android default browser
+    // - Same-tab navigation would navigate away from the PWA
+    // - An iframe navigation with Content-Disposition:inline causes Android to
+    //   fire the OS "Open with..." intent without leaving the app or triggering downloads
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    // Remove after enough time for Android to process the intent
+    setTimeout(() => {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }, 5000);
 
     // Clean up after 2 minutes
     setTimeout(() => { delete _swPendingFiles[token]; }, 120000);
