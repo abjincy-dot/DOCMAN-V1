@@ -1235,26 +1235,26 @@ function openPdfViewer(fileData, fileName) {
 
                     pdfDoc.getPage(pageNum).then(function(page) {
                         const viewport = page.getViewport({ scale: 1 });
-const dpr = Math.min(window.devicePixelRatio || 1, 3);
-const scale = (viewerWidth / viewport.width);
-const scaledViewport = page.getViewport({ scale: scale * dpr });
-
+                        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+                        const scale = viewerWidth / viewport.width;
+                        const scaledViewport = page.getViewport({ scale: scale * dpr });
+                        const displayHeight = viewport.height * scale;
 
                         const canvas = document.createElement('canvas');
                         canvas.width = scaledViewport.width;
                         canvas.height = scaledViewport.height;
-                        canvas.width = scaledViewport.width;
-canvas.height = scaledViewport.height;
-canvas.style.cssText = `display:block;width:${viewerWidth}px;height:${Math.floor(viewport.height * scale)}px;max-width:100%;border-radius:4px;`;
+                        canvas.style.cssText = `display:block;width:${viewerWidth}px;height:${displayHeight}px;max-width:100%;border-radius:4px;`;
 
                         placeholder.style.minHeight = '';
                         placeholder.style.alignItems = '';
                         placeholder.style.justifyContent = '';
                         placeholder.appendChild(canvas);
 
+                        const ctx = canvas.getContext('2d', { alpha: false });
                         page.render({
-                            canvasContext: canvas.getContext('2d'),
-                            viewport: scaledViewport
+                            canvasContext: ctx,
+                            viewport: scaledViewport,
+                            intent: 'display'
                         });
                     });
                 }
