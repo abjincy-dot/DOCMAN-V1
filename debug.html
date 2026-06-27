@@ -3,53 +3,54 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body { font-family: monospace; font-size: 13px; padding: 16px; background: #111; color: #eee; }
-.ok { color: #4f4; }
-.no { color: #f44; }
-button { margin-top: 20px; padding: 14px 20px; font-size: 15px; width: 100%; background: #333; color: #fff; border: 1px solid #666; border-radius: 8px; }
-pre { white-space: pre-wrap; word-break: break-all; }
+body { font-family: monospace; font-size: 13px; padding: 16px; background: #111; color: #eee; word-break: break-all; }
+.row { margin: 4px 0; }
+button { margin-top: 16px; padding: 14px; font-size: 15px; width: 100%; background: #222; color: #fff; border: 1px solid #555; border-radius: 8px; display: block; }
 </style>
 </head>
 <body>
-<pre id="out">Checking...</pre>
-<button onclick="testShare()">Test Share (tap after page loads)</button>
+<div id="out"></div>
+<button onclick="testShare()">► Tap to Test Share API</button>
+<button onclick="testShareUrl()">► Tap to Test Share URL only</button>
 <script>
 const out = document.getElementById('out');
-function log(msg) { out.textContent += '\n' + msg; }
-
-const ua = navigator.userAgent;
-log('UA: ' + ua);
-log('');
-log('navigator.share: ' + (typeof navigator.share !== 'undefined' ? '✓ YES' : '✗ NO'));
-log('navigator.canShare: ' + (typeof navigator.canShare !== 'undefined' ? '✓ YES' : '✗ NO'));
-
-const testFile = new File(['test'], 'test.pdf', { type: 'application/pdf' });
-if (navigator.canShare) {
-  try {
-    log('canShare({files}): ' + (navigator.canShare({ files: [testFile] }) ? '✓ YES' : '✗ NO'));
-  } catch(e) {
-    log('canShare error: ' + e);
-  }
-} else {
-  log('canShare({files}): N/A');
+function log(label, val, good) {
+  const color = good === true ? '#4f4' : good === false ? '#f44' : '#ff0';
+  out.innerHTML += `<div class="row"><span style="color:${color}">${label}:</span> ${val}</div>`;
 }
 
-log('');
-log('standalone PWA: ' + (window.matchMedia('(display-mode: standalone)').matches ? 'YES' : 'NO'));
-log('');
+log('UserAgent', navigator.userAgent, null);
+log('navigator.share', typeof navigator.share !== 'undefined', typeof navigator.share !== 'undefined');
+log('navigator.canShare', typeof navigator.canShare !== 'undefined', typeof navigator.canShare !== 'undefined');
 
-const parts = ua.match(/(Samsung|SamsungBrowser|MIUI|HuaweiBrowser|OPR|EdgA|Chrome|Firefox)\/[\d.]+/gi);
-log('Browsers detected: ' + (parts ? parts.join(', ') : 'unknown'));
+const f = new File(['x'], 'test.pdf', {type:'application/pdf'});
+if (navigator.canShare) {
+  try { log('canShare files', navigator.canShare({files:[f]}), navigator.canShare({files:[f]})); }
+  catch(e) { log('canShare files ERROR', e.message, false); }
+  try { log('canShare url', navigator.canShare({url:'https://example.com'}), true); }
+  catch(e) { log('canShare url ERROR', e.message, false); }
+}
+log('standalone', window.matchMedia('(display-mode:standalone)').matches, null);
+log('SW controller', !!navigator.serviceWorker?.controller, null);
 
 async function testShare() {
-  const file = new File(['%PDF-1.4 test'], 'test.pdf', { type: 'application/pdf' });
-  log('\n--- Share Test ---');
-  if (!navigator.share) { log('navigator.share NOT available'); return; }
+  const f = new File(['%PDF-1.4'], 'test.pdf', {type:'application/pdf'});
+  log('--- share({files}) attempt ---','', null);
   try {
-    await navigator.share({ files: [file], title: 'test.pdf' });
-    log('Share: SUCCESS');
+    await navigator.share({files:[f], title:'test.pdf'});
+    log('share files result','SUCCESS ✓', true);
   } catch(e) {
-    log('Share error: ' + e.name + ' - ' + e.message);
+    log('share files error', e.name+': '+e.message, false);
+  }
+}
+
+async function testShareUrl() {
+  log('--- share({url}) attempt ---','', null);
+  try {
+    await navigator.share({url:'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf', title:'test'});
+    log('share url result','SUCCESS ✓', true);
+  } catch(e) {
+    log('share url error', e.name+': '+e.message, false);
   }
 }
 </script>
