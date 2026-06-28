@@ -602,8 +602,11 @@
   // Splash → App smooth transition
   let appReady = false;
   let splashTimerDone = false;
+  let splashDismissed = false;
   function tryReveal() {
-    if (!appReady || !splashTimerDone) return;
+    if (splashDismissed) return;
+    if (!splashTimerDone) return;  // Wait minimum 1.8s always
+    splashDismissed = true;
     const splash = document.getElementById('splashScreen');
     const app = document.querySelector('.app');
     if (splash) splash.classList.add('hidden');
@@ -612,6 +615,8 @@
   window.addEventListener('load', () => {
     setTimeout(() => { splashTimerDone = true; tryReveal(); }, 1800);
   });
+  // Safety fallback: hide splash after 5s no matter what
+  setTimeout(() => { splashTimerDone = true; tryReveal(); }, 5000);
   Object.defineProperty(window, 'docmanReady', {
     set(v) { if (v) { appReady = true; tryReveal(); } },
     get() { return appReady; }
