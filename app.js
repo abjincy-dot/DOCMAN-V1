@@ -1,4 +1,3 @@
-
 // ============================================================
 // DOCMAN - Document Manager
 // Version: 1.0.0
@@ -31,7 +30,7 @@ function getRandomGradient() {
     const sat = 40 + Math.random() * 20;
     const light1 = 30 + Math.random() * 10;
     const light2 = light1 - 5;
-    return \`linear-gradient(100deg, hsl(${hue}, ${sat}%, ${light1}%), hsl(${hue}, ${sat}%, ${light2}%))\`;
+    return `linear-gradient(100deg, hsl(${hue}, ${sat}%, ${light1}%), hsl(${hue}, ${sat}%, ${light2}%))`;
 }
 
 function getFileIcon(fileName) {
@@ -135,15 +134,15 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
     const overlay = document.createElement('div');
     overlay.id = id;
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px;';
-    overlay.innerHTML = \`
+    overlay.innerHTML = `
         <div style="background:#1a1a1a;border:1px solid ${borderColor};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <p style="color:#e2e8f0;font-size:0.95rem;font-weight:600;margin-bottom:${isPrompt ? 16 : 24}px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
-            ${isPrompt ? \`<input id="modalInput" type="text" value="${defaultVal}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(100,150,255,0.4);background:rgba(255,255,255,0.06);color:#f8fafc;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;">\` : ''}
+            ${isPrompt ? `<input id="modalInput" type="text" value="${defaultVal}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(100,150,255,0.4);background:rgba(255,255,255,0.06);color:#f8fafc;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;">` : ''}
             <div style="display:flex;gap:12px;justify-content:flex-end;">
                 <button id="modalCancel" style="padding:10px 22px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
                 <button id="modalOk" style="padding:10px 22px;border-radius:40px;border:none;background:${resolvedOkColor};color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">${resolvedOkLabel}</button>
             </div>
-        </div>\`;
+        </div>`;
     document.body.appendChild(overlay);
 
     const input = overlay.querySelector('#modalInput');
@@ -535,8 +534,8 @@ async function migrateBase64ToBlob() {
     });
 
     if (migrated > 0) {
-        console.log(\`✅ Migrated ${migrated} files to separate Blob store\`);
-        showToast(\`Migrated ${migrated} files to optimised storage\`);
+        console.log(`✅ Migrated ${migrated} files to separate Blob store`);
+        showToast(`Migrated ${migrated} files to optimised storage`);
     } else {
         console.log('No files needed migration');
     }
@@ -697,13 +696,13 @@ function navigateWithPageTurn(navigationFn, direction = 'forward') {
             const dur = '260ms';
 
             originalStyles.forEach(item => {
-                item.el.style.transition = \`transform ${dur} ${ease}, opacity ${dur} ${ease}\`;
+                item.el.style.transition = `transform ${dur} ${ease}, opacity ${dur} ${ease}`;
                 item.el.style.transform = isForward ? 'translateX(-30%)' : 'translateX(30%)';
                 item.el.style.opacity = '0';
             });
 
             newDynamicEls.forEach(el => {
-                el.style.transition = \`transform ${dur} ${ease}, opacity ${dur} ${ease}\`;
+                el.style.transition = `transform ${dur} ${ease}, opacity ${dur} ${ease}`;
                 el.style.transform = 'translateX(0)';
                 el.style.opacity = '1';
             });
@@ -746,7 +745,7 @@ async function addFileToCurrentFolder(file) {
 }
 
 function deleteFileFromFolder(folderPath, fileName) {
-    showConfirmModal(\`Delete "<b>${escapeHtml(fileName)}</b>"?\`, (confirmed) => {
+    showConfirmModal(`Delete "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
         if (confirmed) {
             haptic.warning();
             if (allFiles[folderPath]) {
@@ -936,7 +935,7 @@ async function openFile(fileName, folderPath) {
     } else if (fileType === 'pdf') {
         await handlePdfFile(fileData, fileName);
     } else {
-        showConfirmModal(\`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?\`, (confirmed) => {
+        showConfirmModal(`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
             if (confirmed) {
                 nativeDownload(fileData, fileName).catch(err => {
                     console.error('Download failed:', err);
@@ -1170,7 +1169,7 @@ function openPdfViewer(fileData, fileName) {
     viewer.className = 'pdf-viewer';
     viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
 
-    viewer.innerHTML = \`
+    viewer.innerHTML = `
         <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:2;min-height:52px;touch-action:manipulation;">
             <button onclick="closePdfViewer()" ontouchstart="" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#ef4444;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;letter-spacing:0.02em;touch-action:manipulation;">
                 Close
@@ -1181,7 +1180,7 @@ function openPdfViewer(fileData, fileName) {
             <div id="pdfCanvasContainer" style="display:flex;flex-direction:column;align-items:center;gap:8px;"></div>
             <div id="pdfLoadingMsg" style="color:#94a3b8;text-align:center;padding:40px 0;font-family:Inter,sans-serif;font-size:0.9rem;">Loading PDF…</div>
         </div>
-    \`;
+    `;
 
     document.body.appendChild(viewer);
     viewer._url = url;
@@ -1223,7 +1222,7 @@ function openPdfViewer(fileData, fileName) {
                     const placeholder = document.createElement('div');
                     placeholder.dataset.page = i;
                     placeholder.dataset.rendered = 'false';
-                    placeholder.style.cssText = \`width:${viewerWidth}px;min-height:200px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;\`;
+                    placeholder.style.cssText = `width:${viewerWidth}px;min-height:200px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;`;
                     placeholder.textContent = 'Page ' + i;
                     container.appendChild(placeholder);
                     placeholders.push(placeholder);
@@ -1244,7 +1243,7 @@ function openPdfViewer(fileData, fileName) {
                         const canvas = document.createElement('canvas');
                         canvas.width = scaledViewport.width;
                         canvas.height = scaledViewport.height;
-                        canvas.style.cssText = \`display:block;width:${viewerWidth}px;height:${displayHeight}px;max-width:100%;border-radius:4px;\`;
+                        canvas.style.cssText = `display:block;width:${viewerWidth}px;height:${displayHeight}px;max-width:100%;border-radius:4px;`;
 
                         placeholder.style.minHeight = '';
                         placeholder.style.alignItems = '';
@@ -1351,7 +1350,7 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, triggerE
 
     const menu = document.createElement('div');
     menu.className = 'ctx-menu';
-    menu.innerHTML = \`
+    menu.innerHTML = `
         <div class="ctx-menu-title">${escapeHtml(title)}</div>
         <div class="ctx-menu-divider"></div>
         <div class="ctx-menu-item" id="ctxFav">
@@ -1367,7 +1366,7 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, triggerE
             <i class="fas fa-trash ctx-item-icon ctx-icon-delete"></i>
             <span class="ctx-menu-item-label danger">Delete</span>
         </div>
-    \`;
+    `;
 
     const close = () => {
         menu.style.animation = 'ctxPopOut 0.15s ease forwards';
@@ -1419,14 +1418,14 @@ function createFileCard(file, folderPath) {
     const div = document.createElement('div');
     div.className = 'card file-card';
     const sizeLabel = getFileSizeLabel(file);
-    div.innerHTML = \`
+    div.innerHTML = `
         <div class="card-icon"><i class="fas ${iconClass}"></i></div>
         <div class="card-info">
             <div class="card-filename" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
-            ${sizeLabel ? \`<div class="card-meta">${sizeLabel}</div>\` : ''}
+            ${sizeLabel ? `<div class="card-meta">${sizeLabel}</div>` : ''}
         </div>
         <i class="fas fa-star card-fav-indicator${file.favourite ? '' : ' card-fav-hidden'}"></i>
-    \`;
+    `;
 
     let pressTimer = null;
     let longPressTriggered = false;
@@ -1543,13 +1542,13 @@ function createFileCard(file, folderPath) {
 function createNoteCard(note, folderPath) {
     const div = document.createElement('div');
     div.className = 'card note-card';
-    div.innerHTML = \`
+    div.innerHTML = `
         <div class="card-icon"><i class="fas fa-sticky-note"></i></div>
         <div class="card-info">
             <div class="card-filename" title="${escapeHtml(note.title)}">${escapeHtml(note.title)}</div>
         </div>
         <i class="fas fa-star card-fav-indicator${note.favourite ? '' : ' card-fav-hidden'}"></i>
-    \`;
+    `;
 
     let pressTimer = null;
     let longPressTriggered = false;
@@ -1596,7 +1595,7 @@ function createNoteCard(note, folderPath) {
                 onRename: () => showPromptModal('Rename note:', note.title, (newTitle) => {
                     if (newTitle?.trim()) renameNote(folderPath, note.id, newTitle.trim());
                 }),
-                onDelete: () => showConfirmModal(\`Delete note "<b>${escapeHtml(note.title)}</b>"?\`, (confirmed) => {
+                onDelete: () => showConfirmModal(`Delete note "<b>${escapeHtml(note.title)}</b>"?`, (confirmed) => {
                     if (confirmed) deleteNoteFromFolder(folderPath, note.id);
                 }),
             });
@@ -1660,7 +1659,7 @@ function createNoteCard(note, folderPath) {
 function createCard(title, onClick, isFolder = false) {
     const div = document.createElement('div');
     div.className = isFolder ? 'card glow-folder' : 'card';
-    div.innerHTML = \`<div class="card-icon"><i class="fas ${isFolder ? 'fa-folder' : 'fa-folder-open'}"></i></div><div class="card-filename">${escapeHtml(title)}</div><div class="card-buttons"></div>\`;
+    div.innerHTML = `<div class="card-icon"><i class="fas ${isFolder ? 'fa-folder' : 'fa-folder-open'}"></i></div><div class="card-filename">${escapeHtml(title)}</div><div class="card-buttons"></div>`;
     div.onclick = onClick;
     return div;
 }
@@ -1704,7 +1703,7 @@ function renameCurrentFolder() {
 function deleteCurrentFolder() {
     if (!currentPath.length) return;
     const name = currentPath[currentPath.length - 1];
-    showConfirmModal(\`Delete "<b>${escapeHtml(name)}</b>" and all its contents? This cannot be undone.\`, (confirmed) => {
+    showConfirmModal(`Delete "<b>${escapeHtml(name)}</b>" and all its contents? This cannot be undone.`, (confirmed) => {
         if (confirmed) {
             const path = currentPath.join('/');
             const prefix = path + '/';
@@ -1766,13 +1765,13 @@ function showLoadingSkeleton() {
     if (!contentDiv) return;
     let html = '<div class="skeleton-grid">';
     for (let i = 0; i < 6; i++) {
-        html += \`<div class="skeleton-card">
+        html += `<div class="skeleton-card">
             <div class="skeleton-icon shimmer"></div>
             <div class="skeleton-lines">
                 <div class="skeleton-line skeleton-line-long shimmer"></div>
                 <div class="skeleton-line skeleton-line-short shimmer"></div>
             </div>
-        </div>\`;
+        </div>`;
     }
     html += '</div>';
     contentDiv.innerHTML = html;
@@ -1825,7 +1824,7 @@ function render() {
         }
 
         document.getElementById('searchInfo').classList.remove('hidden');
-        document.getElementById('searchInfo').innerHTML = \`<i class="fas fa-search"></i> Found ${results.length} result(s) for "${escapeHtml(query)}" <button onclick="clearSearch()">Clear</button>\`;
+        document.getElementById('searchInfo').innerHTML = `<i class="fas fa-search"></i> Found ${results.length} result(s) for "${escapeHtml(query)}" <button onclick="clearSearch()">Clear</button>`;
 
         const contentDiv = document.getElementById('content');
         contentDiv.innerHTML = '';
@@ -1887,9 +1886,9 @@ function render() {
                 const total = countDepartmentFiles(fileSystem[dept], [dept]);
                 const icon = deptIcons[dept] || 'fa-folder';
                 const knownDepts = ['REMELT', 'CASTER', 'HRM', 'CRM', 'ANNEALING', 'TLL', 'SLITTER', 'UTILITY'];
-                const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? \` style="background:${deptColors[dept]}"\` : '';
+                const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? ` style="background:${deptColors[dept]}"` : '';
 
-                html += \`<div class="dept-card" data-dept="${escapeHtml(dept)}">
+                html += `<div class="dept-card" data-dept="${escapeHtml(dept)}">
                     <div class="dept-oval">
                         <div class="dept-pill-bg"${pillBgStyle}></div>
                         <div class="dept-pill-center-icon"><i class="fas ${icon}"></i></div>
@@ -1901,9 +1900,9 @@ function render() {
                         <span class="dept-count">${total}</span>
                         <span class="dept-count-label">Items</span>
                     </div>
-                </div>\`;
+                </div>`;
             }
-            html += \`
+            html += `
                 </div>
                 <div class="dept-hub">
                     <div class="dept-hub-circle">
@@ -1913,15 +1912,15 @@ function render() {
                         </div>
                     </div>
                 </div>
-            </div>\`;
+            </div>`;
         }
 
-        html += \`<div class="dept-add-footer">
+        html += `<div class="dept-add-footer">
             <button class="dept-add-btn" onclick="addNewDepartment()">
                 <span class="dept-add-btn-icon"><i class="fas fa-plus"></i></span>
                 <span class="dept-add-btn-label">Add Department</span>
             </button>
-        </div>\`;
+        </div>`;
 
         document.getElementById('departmentsSection').innerHTML = html;
         document.getElementById('homeBtn').classList.add('hidden');
@@ -1960,23 +1959,23 @@ function render() {
         folderCardEl.className = 'current-folder-card';
 
         const parentPath = currentPath.slice(0, -1);
-        const pathHtml = \`<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-home"></i> <span style="color:#3b82f6">Home</span></span>\` +
-            parentPath.map((p, i) => \`<span class="cf-sep"> / </span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})">${escapeHtml(p)}</span>\`).join('') +
-            \`<span class="cf-sep"> / </span><span class="cf-part cf-part-current">${escapeHtml(currentPath[currentPath.length - 1])}</span>\`;
+        const pathHtml = `<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-home"></i> <span style="color:#3b82f6">Home</span></span>` +
+            parentPath.map((p, i) => `<span class="cf-sep"> / </span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})">${escapeHtml(p)}</span>`).join('') +
+            `<span class="cf-sep"> / </span><span class="cf-part cf-part-current">${escapeHtml(currentPath[currentPath.length - 1])}</span>`;
 
-        folderCardEl.innerHTML = \`
+        folderCardEl.innerHTML = `
             <div class="cf-path-row">${pathHtml}</div>
             <div class="cf-bottom-row">
                 <div class="cf-folder-name">${escapeHtml(currentPath[currentPath.length - 1])}</div>
                 <div class="cf-folder-icon"><i class="fas fa-folder"></i><i class="fas fa-star cf-star"></i></div>
-            </div>\`;
+            </div>`;
         contentDiv.appendChild(folderCardEl);
     }
 
     if (!isRoot) {
         const actionDiv = document.createElement('div');
         actionDiv.className = 'action-bar';
-        actionDiv.innerHTML = \`
+        actionDiv.innerHTML = `
             <div class="action-dots action-dots-left"><span></span><span></span><span></span><span></span><span></span><span></span></div>
             <div class="action-btns-wrap">
                 <div class="action-btns-row">
@@ -1988,7 +1987,7 @@ function render() {
                     <button class="action-btn action-btn-add" onclick="addNewFolder()"><i class="fas fa-plus"></i> Add Subfolder</button>
                 </div>
             </div>
-            <div class="action-dots action-dots-right"><span></span><span></span><span></span><span></span><span></span><span></span></div>\`;
+            <div class="action-dots action-dots-right"><span></span><span></span><span></span><span></span><span></span><span></span></div>`;
 
         const folderCardInDom = contentDiv.querySelector('.current-folder-card');
         if (folderCardInDom) {
@@ -2019,7 +2018,7 @@ function render() {
             } else {
                 const dz = document.createElement('div');
                 dz.className = 'empty-state';
-                dz.innerHTML = \`<i class="fas fa-cloud-upload-alt"></i><p>No files here yet</p>\`;
+                dz.innerHTML = `<i class="fas fa-cloud-upload-alt"></i><p>No files here yet</p>`;
                 contentDiv.appendChild(dz);
             }
         } else {
@@ -2162,26 +2161,26 @@ function drawDeptConnectors() {
         const dotX = hubCenterX - Math.sqrt(hubRadius * hubRadius - safeDy * safeDy);
         const lineEndX = dotX;
 
-        segments.push(\`M ${d.x1} ${d.y1}\`);
+        segments.push(`M ${d.x1} ${d.y1}`);
         const exitX = d.x1 + 6;
-        segments.push(\`L ${exitX} ${d.y1}\`);
+        segments.push(`L ${exitX} ${d.y1}`);
         const channelX = lineEndX - 35;
 
         if (dy > 8) {
-            segments.push(\`L ${channelX - safeCr} ${d.y1}\`);
-            segments.push(\`A ${safeCr} ${safeCr} 0 0 1 ${channelX} ${d.y1 + safeCr}\`);
-            segments.push(\`L ${channelX} ${y2 - safeCr}\`);
-            segments.push(\`A ${safeCr} ${safeCr} 0 0 0 ${channelX + safeCr} ${y2}\`);
+            segments.push(`L ${channelX - safeCr} ${d.y1}`);
+            segments.push(`A ${safeCr} ${safeCr} 0 0 1 ${channelX} ${d.y1 + safeCr}`);
+            segments.push(`L ${channelX} ${y2 - safeCr}`);
+            segments.push(`A ${safeCr} ${safeCr} 0 0 0 ${channelX + safeCr} ${y2}`);
         } else if (dy < -8) {
-            segments.push(\`L ${channelX - safeCr} ${d.y1}\`);
-            segments.push(\`A ${safeCr} ${safeCr} 0 0 0 ${channelX} ${d.y1 - safeCr}\`);
-            segments.push(\`L ${channelX} ${y2 + safeCr}\`);
-            segments.push(\`A ${safeCr} ${safeCr} 0 0 1 ${channelX + safeCr} ${y2}\`);
+            segments.push(`L ${channelX - safeCr} ${d.y1}`);
+            segments.push(`A ${safeCr} ${safeCr} 0 0 0 ${channelX} ${d.y1 - safeCr}`);
+            segments.push(`L ${channelX} ${y2 + safeCr}`);
+            segments.push(`A ${safeCr} ${safeCr} 0 0 1 ${channelX + safeCr} ${y2}`);
         } else {
-            segments.push(\`L ${channelX} ${d.y1}\`);
-            segments.push(\`L ${channelX} ${y2}\`);
+            segments.push(`L ${channelX} ${d.y1}`);
+            segments.push(`L ${channelX} ${y2}`);
         }
-        segments.push(\`L ${lineEndX} ${y2}\`);
+        segments.push(`L ${lineEndX} ${y2}`);
 
         pathD = segments.join(' ');
 
@@ -2294,21 +2293,21 @@ function openFavouritesView() {
         if (favFiles.length) {
             const sec = document.createElement('div');
             sec.className = 'fav-section-title';
-            sec.innerHTML = \`<i class="fas fa-file"></i> Files <span>${favFiles.length}</span>\`;
+            sec.innerHTML = `<i class="fas fa-file"></i> Files <span>${favFiles.length}</span>`;
             list.appendChild(sec);
 
             favFiles.forEach(({ file, folderPath }) => {
                 const iconClass = getFileIcon(file.name);
                 const row = document.createElement('div');
                 row.className = 'fav-row';
-                row.innerHTML = \`
+                row.innerHTML = `
                     <div class="fav-row-icon"><i class="fas ${iconClass}"></i></div>
                     <div class="fav-row-info">
                         <div class="fav-row-name">${escapeHtml(file.name)}</div>
                         <div class="fav-row-path">${escapeHtml(folderPath)}</div>
                     </div>
                     <button class="fav-row-unfav" title="Remove favourite"><i class="fas fa-heart"></i></button>
-                \`;
+                `;
                 row.querySelector('.fav-row-unfav').addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const arr = allFiles[folderPath];
@@ -2332,20 +2331,20 @@ function openFavouritesView() {
         if (favNotes.length) {
             const sec = document.createElement('div');
             sec.className = 'fav-section-title';
-            sec.innerHTML = \`<i class="fas fa-sticky-note"></i> Notes <span>${favNotes.length}</span>\`;
+            sec.innerHTML = `<i class="fas fa-sticky-note"></i> Notes <span>${favNotes.length}</span>`;
             list.appendChild(sec);
 
             favNotes.forEach(({ note, folderPath }) => {
                 const row = document.createElement('div');
                 row.className = 'fav-row';
-                row.innerHTML = \`
+                row.innerHTML = `
                     <div class="fav-row-icon fav-row-icon-note"><i class="fas fa-sticky-note"></i></div>
                     <div class="fav-row-info">
                         <div class="fav-row-name">${escapeHtml(note.title)}</div>
                         <div class="fav-row-path">${escapeHtml(folderPath)}</div>
                     </div>
                     <button class="fav-row-unfav" title="Remove favourite"><i class="fas fa-heart"></i></button>
-                \`;
+                `;
                 row.querySelector('.fav-row-unfav').addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const arr = allNotes[folderPath];
@@ -2440,7 +2439,7 @@ function updateThemeIcon() {
     const isDark = !document.body.classList.contains('light-mode');
     const iconWrapper = themeBtn.querySelector('.theme-icon-wrapper');
     if (iconWrapper) {
-        iconWrapper.innerHTML = \`<i class="fas ${isDark ? 'fa-sun' : 'fa-moon'}"></i>\`;
+        iconWrapper.innerHTML = `<i class="fas ${isDark ? 'fa-sun' : 'fa-moon'}"></i>`;
     }
     themeBtn.dataset.theme = isDark ? 'dark' : 'light';
 }
@@ -2480,7 +2479,7 @@ function applyParticles() {
 
 function applyRadioUI(radioName) {
     const val = docmanSettings[radioName] || 'external';
-    document.querySelectorAll(\`[data-radio="${radioName}"]\`).forEach(dot => {
+    document.querySelectorAll(`[data-radio="${radioName}"]`).forEach(dot => {
         dot.classList.toggle('active', dot.getAttribute('data-val') === val);
     });
 }
@@ -2496,21 +2495,21 @@ function showPinVerifyModal(title, callback) {
     const overlay = document.createElement('div');
     overlay.id = 'pinVerifyModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;';
-    overlay.innerHTML = \`
+    overlay.innerHTML = `
         <div style="background:#1a1a1a;border:1px solid rgba(239,68,68,0.4);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
             <div style="width:48px;height:48px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.4rem;">🔒</div>
             <p style="color:#e2e8f0;font-size:0.95rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;">${title}</p>
             <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 20px;font-family:Inter,sans-serif;">Enter your 4-digit PIN to confirm</p>
             <div id="pinVerifyDots" style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;">
-                ${[0,1,2,3].map(i => \`<div id="pvDot${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);transition:all 0.15s;"></div>\`).join('')}
+                ${[0,1,2,3].map(i => `<div id="pvDot${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);transition:all 0.15s;"></div>`).join('')}
             </div>
             <div id="pinVerifyGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
-                ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k => \`
+                ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k => `
                     <button class="pvKey" data-key="${k}" style="padding:16px 0;border-radius:14px;border:1px solid rgba(255,255,255,${k===''?'0':'0.1'});background:${k===''?'transparent':'rgba(255,255,255,0.06)'};color:#e2e8f0;font-size:1.15rem;font-weight:600;font-family:Inter,sans-serif;cursor:${k===''?'default':'pointer'};pointer-events:${k===''?'none':'auto'};transition:background 0.1s;">${k}</button>
-                \`).join('')}
+                `).join('')}
             </div>
             <button id="pvCancel" style="width:100%;padding:12px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
-        </div>\`;
+        </div>`;
     document.body.appendChild(overlay);
 
     let entered = '';
@@ -2518,7 +2517,7 @@ function showPinVerifyModal(title, callback) {
 
     function updateDots() {
         for (let i = 0; i < 4; i++) {
-            const dot = document.getElementById(\`pvDot${i}\`);
+            const dot = document.getElementById(`pvDot${i}`);
             dot.style.background = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.15)';
             dot.style.borderColor = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.25)';
         }
@@ -2568,7 +2567,3 @@ function showPinVerifyModal(title, callback) {
         callback(false); };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove();
             callback(false); } });
-
-
-
-Yahoo Mail: Search, organise, conquer
