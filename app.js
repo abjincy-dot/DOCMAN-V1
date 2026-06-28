@@ -2595,63 +2595,106 @@ function updatePinStatusUI() {
 // EXPORT / IMPORT
 // ============================================================
 
-function exportBackupData() {
-    const backup = {
-        fileSystem,
-        allNotes,
-        deptColors,
-        exportedAt: new Date().toISOString(),
-        version: APP_VERSION
-    };
+async function exportBackupData() {
+    showToast('Preparing backup…');
+    try {
+        const manifest = {
+            fileSystem,
+            allNotes,
+            deptColors,
+            exportedAt: new Date().toISOString(),
+            version: APP_VERSION,
+            format: 'docman-zip-v1'
+        };
 
-    backup.fileMetadata = {};
-    for (const path in allFiles) {
-        if (allFiles[path]) {
-            backup.fileMetadata[path] = allFiles[path].map(f => ({
-                name: f.name,
-                type: f.type,
-                uploadedAt: f.uploadedAt,
-                favourite: f.favourite || false,
-                size: f.size || 0
-            }));
+        manifest.fileMetadata = {};
+        for (const path in allFiles) {
+            if (allFiles[path]) {
+                manifest.fileMetadata[path] = allFiles[path].map(f => ({
+                    name: f.name,
+                    type: f.type,
+                    uploadedAt: f.uploadedAt,
+                    favourite: f.favourite || false,
+                    size: f.size || 0
+                }));
+            }
         }
-    }
 
-    const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
-    const backupFileName = `docman-backup-${Date.now()}.json`;
-    nativeDownload(blob, backupFileName)
-        .then(() => showToast('Backup exported'))
-        .catch(err => {
-            console.error('Backup export failed:', err);
-            showToast('Could not export backup', true);
-        });
+        const zip = new JSZip();
+        zip.file('manifest.json', JSON.stringify(manifest));
+        const filesFolder = zip.folder('files');
+
+        // Pull every file's actual content (lazy-loading blobs as needed) into the zip.
+        // Zip entry path mirrors folderPath/fileName so import can match it back to its folder.
+        for (const path in allFiles) {
+            for (const f of (allFiles[path] || [])) {
+                try {
+                    const blob = await loadFileData(path, f.name);
+                    if (blob) {
+                        filesFolder.file(path + '/' + f.name, blob);
+                    } else {
+                        console.warn('No data found for', path, f.name, '— skipping content, metadata only');
+                    }
+                } catch (e) {
+                    console.warn('Failed to read file for backup:', path, f.name, e);
+                }
+            }
+        }
+
+        const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+        const backupFileName = `docman-backup-${Date.now()}.zip`;
+        await nativeDownload(zipBlob, backupFileName);
+        showToast('Backup exported');
+    } catch (err) {
+        console.error('Backup export failed:', err);
+        showToast('Could not export backup', true);
+    }
 }
 
 function importBackupData(file) {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
+    (async () => {
         try {
-            const backup = JSON.parse(e.target.result);
-            if (!backup.fileSystem) { showToast('Invalid backup file', true); return; }
+            const zip = await JSZip.loadAsync(file);
+            const manifestEntry = zip.file('manifest.json');
+            if (!manifestEntry) { showToast('Invalid backup file', true); return; }
+
+            const manifest = JSON.parse(await manifestEntry.async('string'));
+            if (!manifest.fileSystem) { showToast('Invalid backup file', true); return; }
 
             showConfirmModal('This will <b>replace all current data</b> with the backup. Continue?', async (ok) => {
                 if (!ok) return;
 
-                fileSystem = backup.fileSystem || {};
-                allNotes = backup.allNotes || {};
-                deptColors = backup.deptColors || {};
+                showToast('Restoring backup…');
 
-                if (backup.fileMetadata) {
-                    for (const path in backup.fileMetadata) {
-                        if (backup.fileMetadata[path]) {
-                            allFiles[path] = backup.fileMetadata[path].map(f => ({
+                fileSystem = manifest.fileSystem || {};
+                allNotes = manifest.allNotes || {};
+                deptColors = manifest.deptColors || {};
+                allFiles = {};
+
+                if (manifest.fileMetadata) {
+                    for (const path in manifest.fileMetadata) {
+                        if (!manifest.fileMetadata[path]) continue;
+                        allFiles[path] = [];
+                        for (const f of manifest.fileMetadata[path]) {
+                            const zipEntry = zip.file('files/' + path + '/' + f.name);
+                            let fileData = null;
+                            if (zipEntry) {
+                                try {
+                                    fileData = await zipEntry.async('blob');
+                                } catch (e) {
+                                    console.warn('Failed to read file from backup:', path, f.name, e);
+                                }
+                            }
+                            allFiles[path].push({
                                 name: f.name,
                                 type: f.type || 'application/octet-stream',
                                 uploadedAt: f.uploadedAt || Date.now(),
                                 favourite: f.favourite || false,
-                                size: f.size || 0,
-                                _hasData: false
-                            }));
+                                size: f.size || (fileData ? fileData.size : 0),
+                                fileData: fileData,
+                                _hasData: !!fileData,
+                                _isBase64: false
+                            });
                         }
                     }
                 }
@@ -2660,6 +2703,7 @@ function importBackupData(file) {
                 await saveDeptColors();
                 await saveAllNotesToDB();
                 await saveAllFilesToDB();
+                await loadAllFileMetadata();
 
                 currentPath = [];
                 closeSettingsPage();
@@ -2667,10 +2711,10 @@ function importBackupData(file) {
                 showToast('Data imported successfully');
             });
         } catch (err) {
+            console.error('Backup import failed:', err);
             showToast('Failed to read backup: ' + err.message, true);
         }
-    };
-    reader.readAsText(file);
+    })();
 }
 
 // ============================================================
