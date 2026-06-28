@@ -1,3 +1,4 @@
+
 // ============================================================
 // DOCMAN - Document Manager
 // Version: 1.0.0
@@ -30,7 +31,7 @@ function getRandomGradient() {
     const sat = 40 + Math.random() * 20;
     const light1 = 30 + Math.random() * 10;
     const light2 = light1 - 5;
-    return `linear-gradient(100deg, hsl(${hue}, ${sat}%, ${light1}%), hsl(${hue}, ${sat}%, ${light2}%))`;
+    return \`linear-gradient(100deg, hsl(${hue}, ${sat}%, ${light1}%), hsl(${hue}, ${sat}%, ${light2}%))\`;
 }
 
 function getFileIcon(fileName) {
@@ -134,15 +135,15 @@ function showModal({ type = 'confirm', message, defaultVal = '', okLabel, okColo
     const overlay = document.createElement('div');
     overlay.id = id;
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:20px;';
-    overlay.innerHTML = `
+    overlay.innerHTML = \`
         <div style="background:#1a1a1a;border:1px solid ${borderColor};border-radius:20px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
             <p style="color:#e2e8f0;font-size:0.95rem;font-weight:600;margin-bottom:${isPrompt ? 16 : 24}px;font-family:Inter,sans-serif;line-height:1.5;">${message}</p>
-            ${isPrompt ? `<input id="modalInput" type="text" value="${defaultVal}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(100,150,255,0.4);background:rgba(255,255,255,0.06);color:#f8fafc;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;">` : ''}
+            ${isPrompt ? \`<input id="modalInput" type="text" value="${defaultVal}" style="width:100%;box-sizing:border-box;padding:12px 16px;border-radius:12px;border:1px solid rgba(100,150,255,0.4);background:rgba(255,255,255,0.06);color:#f8fafc;font-size:16px;font-family:Inter,sans-serif;outline:none;margin-bottom:20px;">\` : ''}
             <div style="display:flex;gap:12px;justify-content:flex-end;">
                 <button id="modalCancel" style="padding:10px 22px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
                 <button id="modalOk" style="padding:10px 22px;border-radius:40px;border:none;background:${resolvedOkColor};color:#fff;cursor:pointer;font-weight:600;font-family:Inter,sans-serif;font-size:0.85rem;">${resolvedOkLabel}</button>
             </div>
-        </div>`;
+        </div>\`;
     document.body.appendChild(overlay);
 
     const input = overlay.querySelector('#modalInput');
@@ -534,8 +535,8 @@ async function migrateBase64ToBlob() {
     });
 
     if (migrated > 0) {
-        console.log(`✅ Migrated ${migrated} files to separate Blob store`);
-        showToast(`Migrated ${migrated} files to optimised storage`);
+        console.log(\`✅ Migrated ${migrated} files to separate Blob store\`);
+        showToast(\`Migrated ${migrated} files to optimised storage\`);
     } else {
         console.log('No files needed migration');
     }
@@ -696,13 +697,13 @@ function navigateWithPageTurn(navigationFn, direction = 'forward') {
             const dur = '260ms';
 
             originalStyles.forEach(item => {
-                item.el.style.transition = `transform ${dur} ${ease}, opacity ${dur} ${ease}`;
+                item.el.style.transition = \`transform ${dur} ${ease}, opacity ${dur} ${ease}\`;
                 item.el.style.transform = isForward ? 'translateX(-30%)' : 'translateX(30%)';
                 item.el.style.opacity = '0';
             });
 
             newDynamicEls.forEach(el => {
-                el.style.transition = `transform ${dur} ${ease}, opacity ${dur} ${ease}`;
+                el.style.transition = \`transform ${dur} ${ease}, opacity ${dur} ${ease}\`;
                 el.style.transform = 'translateX(0)';
                 el.style.opacity = '1';
             });
@@ -745,7 +746,7 @@ async function addFileToCurrentFolder(file) {
 }
 
 function deleteFileFromFolder(folderPath, fileName) {
-    showConfirmModal(`Delete "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
+    showConfirmModal(\`Delete "<b>${escapeHtml(fileName)}</b>"?\`, (confirmed) => {
         if (confirmed) {
             haptic.warning();
             if (allFiles[folderPath]) {
@@ -935,7 +936,7 @@ async function openFile(fileName, folderPath) {
     } else if (fileType === 'pdf') {
         await handlePdfFile(fileData, fileName);
     } else {
-        showConfirmModal(`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
+        showConfirmModal(\`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?\`, (confirmed) => {
             if (confirmed) {
                 nativeDownload(fileData, fileName).catch(err => {
                     console.error('Download failed:', err);
@@ -1169,33 +1170,23 @@ function openPdfViewer(fileData, fileName) {
     viewer.className = 'pdf-viewer';
     viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
 
-    viewer.innerHTML = `
-        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:2;min-height:52px;">
-            <button onclick=\"closePdfViewer()\" ontouchstart=\"\" style=\"background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#ef4444;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;letter-spacing:0.02em;\">
-
+    viewer.innerHTML = \`
+        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:2;min-height:52px;touch-action:manipulation;">
+            <button onclick="closePdfViewer()" ontouchstart="" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#ef4444;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;letter-spacing:0.02em;touch-action:manipulation;">
                 Close
             </button>
             <span class="pdf-viewer-title" style="flex:1;color:#e2e8f0;font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(fileName)}</span>
         </div>
-        <div id="pdfViewerBody" style="flex:1;overflow-y:auto;overflow-x:hidden;background:#2a2a2a;padding:12px 8px;-webkit-overflow-scrolling:touch;">
+        <div id="pdfViewerBody" style="flex:1;overflow-y:auto;overflow-x:hidden;background:#2a2a2a;padding:12px 8px;-webkit-overflow-scrolling:touch;touch-action:pan-y;">
             <div id="pdfCanvasContainer" style="display:flex;flex-direction:column;align-items:center;gap:8px;"></div>
             <div id="pdfLoadingMsg" style="color:#94a3b8;text-align:center;padding:40px 0;font-family:Inter,sans-serif;font-size:0.9rem;">Loading PDF…</div>
         </div>
-    `;
+    \`;
 
     document.body.appendChild(viewer);
     viewer._url = url;
     viewer._fileName = fileName;
     viewer._fileData = fileData;
-
-    // Fix Android 300ms tap delay on the close button by responding to touchend
-    const closeBtn = viewer.querySelector('button[onclick="closePdfViewer()"]');
-    if (closeBtn) {
-        closeBtn.addEventListener('touchend', function(e) {
-            e.preventDefault();
-            closePdfViewer();
-        }, { passive: false });
-    }
 
     const escHandler = function(e) {
         if (e.key === 'Escape') {
@@ -1232,7 +1223,7 @@ function openPdfViewer(fileData, fileName) {
                     const placeholder = document.createElement('div');
                     placeholder.dataset.page = i;
                     placeholder.dataset.rendered = 'false';
-                    placeholder.style.cssText = `width:${viewerWidth}px;min-height:200px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;`;
+                    placeholder.style.cssText = \`width:${viewerWidth}px;min-height:200px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;\`;
                     placeholder.textContent = 'Page ' + i;
                     container.appendChild(placeholder);
                     placeholders.push(placeholder);
@@ -1253,7 +1244,7 @@ function openPdfViewer(fileData, fileName) {
                         const canvas = document.createElement('canvas');
                         canvas.width = scaledViewport.width;
                         canvas.height = scaledViewport.height;
-                        canvas.style.cssText = `display:block;width:${viewerWidth}px;height:${displayHeight}px;max-width:100%;border-radius:4px;`;
+                        canvas.style.cssText = \`display:block;width:${viewerWidth}px;height:${displayHeight}px;max-width:100%;border-radius:4px;\`;
 
                         placeholder.style.minHeight = '';
                         placeholder.style.alignItems = '';
@@ -1319,7 +1310,6 @@ function openPdfViewer(fileData, fileName) {
 
 function closePdfViewer() {
     const viewer = document.getElementById('pdfViewer');
-    if (!viewer) return;
     if (viewer) {
         if (viewer._url) {
             URL.revokeObjectURL(viewer._url);
@@ -1361,7 +1351,7 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, triggerE
 
     const menu = document.createElement('div');
     menu.className = 'ctx-menu';
-    menu.innerHTML = `
+    menu.innerHTML = \`
         <div class="ctx-menu-title">${escapeHtml(title)}</div>
         <div class="ctx-menu-divider"></div>
         <div class="ctx-menu-item" id="ctxFav">
@@ -1377,7 +1367,7 @@ function showCardContextMenu({ title, isFav, onFav, onRename, onDelete, triggerE
             <i class="fas fa-trash ctx-item-icon ctx-icon-delete"></i>
             <span class="ctx-menu-item-label danger">Delete</span>
         </div>
-    `;
+    \`;
 
     const close = () => {
         menu.style.animation = 'ctxPopOut 0.15s ease forwards';
@@ -1429,14 +1419,14 @@ function createFileCard(file, folderPath) {
     const div = document.createElement('div');
     div.className = 'card file-card';
     const sizeLabel = getFileSizeLabel(file);
-    div.innerHTML = `
+    div.innerHTML = \`
         <div class="card-icon"><i class="fas ${iconClass}"></i></div>
         <div class="card-info">
             <div class="card-filename" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
-            ${sizeLabel ? `<div class="card-meta">${sizeLabel}</div>` : ''}
+            ${sizeLabel ? \`<div class="card-meta">${sizeLabel}</div>\` : ''}
         </div>
         <i class="fas fa-star card-fav-indicator${file.favourite ? '' : ' card-fav-hidden'}"></i>
-    `;
+    \`;
 
     let pressTimer = null;
     let longPressTriggered = false;
@@ -1553,13 +1543,13 @@ function createFileCard(file, folderPath) {
 function createNoteCard(note, folderPath) {
     const div = document.createElement('div');
     div.className = 'card note-card';
-    div.innerHTML = `
+    div.innerHTML = \`
         <div class="card-icon"><i class="fas fa-sticky-note"></i></div>
         <div class="card-info">
             <div class="card-filename" title="${escapeHtml(note.title)}">${escapeHtml(note.title)}</div>
         </div>
         <i class="fas fa-star card-fav-indicator${note.favourite ? '' : ' card-fav-hidden'}"></i>
-    `;
+    \`;
 
     let pressTimer = null;
     let longPressTriggered = false;
@@ -1606,7 +1596,7 @@ function createNoteCard(note, folderPath) {
                 onRename: () => showPromptModal('Rename note:', note.title, (newTitle) => {
                     if (newTitle?.trim()) renameNote(folderPath, note.id, newTitle.trim());
                 }),
-                onDelete: () => showConfirmModal(`Delete note "<b>${escapeHtml(note.title)}</b>"?`, (confirmed) => {
+                onDelete: () => showConfirmModal(\`Delete note "<b>${escapeHtml(note.title)}</b>"?\`, (confirmed) => {
                     if (confirmed) deleteNoteFromFolder(folderPath, note.id);
                 }),
             });
@@ -1670,7 +1660,7 @@ function createNoteCard(note, folderPath) {
 function createCard(title, onClick, isFolder = false) {
     const div = document.createElement('div');
     div.className = isFolder ? 'card glow-folder' : 'card';
-    div.innerHTML = `<div class="card-icon"><i class="fas ${isFolder ? 'fa-folder' : 'fa-folder-open'}"></i></div><div class="card-filename">${escapeHtml(title)}</div><div class="card-buttons"></div>`;
+    div.innerHTML = \`<div class="card-icon"><i class="fas ${isFolder ? 'fa-folder' : 'fa-folder-open'}"></i></div><div class="card-filename">${escapeHtml(title)}</div><div class="card-buttons"></div>\`;
     div.onclick = onClick;
     return div;
 }
@@ -1714,7 +1704,7 @@ function renameCurrentFolder() {
 function deleteCurrentFolder() {
     if (!currentPath.length) return;
     const name = currentPath[currentPath.length - 1];
-    showConfirmModal(`Delete "<b>${escapeHtml(name)}</b>" and all its contents? This cannot be undone.`, (confirmed) => {
+    showConfirmModal(\`Delete "<b>${escapeHtml(name)}</b>" and all its contents? This cannot be undone.\`, (confirmed) => {
         if (confirmed) {
             const path = currentPath.join('/');
             const prefix = path + '/';
@@ -1776,13 +1766,13 @@ function showLoadingSkeleton() {
     if (!contentDiv) return;
     let html = '<div class="skeleton-grid">';
     for (let i = 0; i < 6; i++) {
-        html += `<div class="skeleton-card">
+        html += \`<div class="skeleton-card">
             <div class="skeleton-icon shimmer"></div>
             <div class="skeleton-lines">
                 <div class="skeleton-line skeleton-line-long shimmer"></div>
                 <div class="skeleton-line skeleton-line-short shimmer"></div>
             </div>
-        </div>`;
+        </div>\`;
     }
     html += '</div>';
     contentDiv.innerHTML = html;
@@ -1835,7 +1825,7 @@ function render() {
         }
 
         document.getElementById('searchInfo').classList.remove('hidden');
-        document.getElementById('searchInfo').innerHTML = `<i class="fas fa-search"></i> Found ${results.length} result(s) for "${escapeHtml(query)}" <button onclick="clearSearch()">Clear</button>`;
+        document.getElementById('searchInfo').innerHTML = \`<i class="fas fa-search"></i> Found ${results.length} result(s) for "${escapeHtml(query)}" <button onclick="clearSearch()">Clear</button>\`;
 
         const contentDiv = document.getElementById('content');
         contentDiv.innerHTML = '';
@@ -1897,9 +1887,9 @@ function render() {
                 const total = countDepartmentFiles(fileSystem[dept], [dept]);
                 const icon = deptIcons[dept] || 'fa-folder';
                 const knownDepts = ['REMELT', 'CASTER', 'HRM', 'CRM', 'ANNEALING', 'TLL', 'SLITTER', 'UTILITY'];
-                const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? ` style="background:${deptColors[dept]}"` : '';
+                const pillBgStyle = (!knownDepts.includes(dept) && deptColors[dept]) ? \` style="background:${deptColors[dept]}"\` : '';
 
-                html += `<div class="dept-card" data-dept="${escapeHtml(dept)}">
+                html += \`<div class="dept-card" data-dept="${escapeHtml(dept)}">
                     <div class="dept-oval">
                         <div class="dept-pill-bg"${pillBgStyle}></div>
                         <div class="dept-pill-center-icon"><i class="fas ${icon}"></i></div>
@@ -1911,9 +1901,9 @@ function render() {
                         <span class="dept-count">${total}</span>
                         <span class="dept-count-label">Items</span>
                     </div>
-                </div>`;
+                </div>\`;
             }
-            html += `
+            html += \`
                 </div>
                 <div class="dept-hub">
                     <div class="dept-hub-circle">
@@ -1923,15 +1913,15 @@ function render() {
                         </div>
                     </div>
                 </div>
-            </div>`;
+            </div>\`;
         }
 
-        html += `<div class="dept-add-footer">
+        html += \`<div class="dept-add-footer">
             <button class="dept-add-btn" onclick="addNewDepartment()">
                 <span class="dept-add-btn-icon"><i class="fas fa-plus"></i></span>
                 <span class="dept-add-btn-label">Add Department</span>
             </button>
-        </div>`;
+        </div>\`;
 
         document.getElementById('departmentsSection').innerHTML = html;
         document.getElementById('homeBtn').classList.add('hidden');
@@ -1970,23 +1960,23 @@ function render() {
         folderCardEl.className = 'current-folder-card';
 
         const parentPath = currentPath.slice(0, -1);
-        const pathHtml = `<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-home"></i> <span style="color:#3b82f6">Home</span></span>` +
-            parentPath.map((p, i) => `<span class="cf-sep"> / </span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})">${escapeHtml(p)}</span>`).join('') +
-            `<span class="cf-sep"> / </span><span class="cf-part cf-part-current">${escapeHtml(currentPath[currentPath.length - 1])}</span>`;
+        const pathHtml = \`<span class="cf-home" onclick="navigateToBreadcrumb(-1)"><i class="fas fa-home"></i> <span style="color:#3b82f6">Home</span></span>\` +
+            parentPath.map((p, i) => \`<span class="cf-sep"> / </span><span class="cf-part cf-part-nav" onclick="navigateToBreadcrumb(${i})">${escapeHtml(p)}</span>\`).join('') +
+            \`<span class="cf-sep"> / </span><span class="cf-part cf-part-current">${escapeHtml(currentPath[currentPath.length - 1])}</span>\`;
 
-        folderCardEl.innerHTML = `
+        folderCardEl.innerHTML = \`
             <div class="cf-path-row">${pathHtml}</div>
             <div class="cf-bottom-row">
                 <div class="cf-folder-name">${escapeHtml(currentPath[currentPath.length - 1])}</div>
                 <div class="cf-folder-icon"><i class="fas fa-folder"></i><i class="fas fa-star cf-star"></i></div>
-            </div>`;
+            </div>\`;
         contentDiv.appendChild(folderCardEl);
     }
 
     if (!isRoot) {
         const actionDiv = document.createElement('div');
         actionDiv.className = 'action-bar';
-        actionDiv.innerHTML = `
+        actionDiv.innerHTML = \`
             <div class="action-dots action-dots-left"><span></span><span></span><span></span><span></span><span></span><span></span></div>
             <div class="action-btns-wrap">
                 <div class="action-btns-row">
@@ -1998,7 +1988,7 @@ function render() {
                     <button class="action-btn action-btn-add" onclick="addNewFolder()"><i class="fas fa-plus"></i> Add Subfolder</button>
                 </div>
             </div>
-            <div class="action-dots action-dots-right"><span></span><span></span><span></span><span></span><span></span><span></span></div>`;
+            <div class="action-dots action-dots-right"><span></span><span></span><span></span><span></span><span></span><span></span></div>\`;
 
         const folderCardInDom = contentDiv.querySelector('.current-folder-card');
         if (folderCardInDom) {
@@ -2029,7 +2019,7 @@ function render() {
             } else {
                 const dz = document.createElement('div');
                 dz.className = 'empty-state';
-                dz.innerHTML = `<i class="fas fa-cloud-upload-alt"></i><p>No files here yet</p>`;
+                dz.innerHTML = \`<i class="fas fa-cloud-upload-alt"></i><p>No files here yet</p>\`;
                 contentDiv.appendChild(dz);
             }
         } else {
@@ -2172,26 +2162,26 @@ function drawDeptConnectors() {
         const dotX = hubCenterX - Math.sqrt(hubRadius * hubRadius - safeDy * safeDy);
         const lineEndX = dotX;
 
-        segments.push(`M ${d.x1} ${d.y1}`);
+        segments.push(\`M ${d.x1} ${d.y1}\`);
         const exitX = d.x1 + 6;
-        segments.push(`L ${exitX} ${d.y1}`);
+        segments.push(\`L ${exitX} ${d.y1}\`);
         const channelX = lineEndX - 35;
 
         if (dy > 8) {
-            segments.push(`L ${channelX - safeCr} ${d.y1}`);
-            segments.push(`A ${safeCr} ${safeCr} 0 0 1 ${channelX} ${d.y1 + safeCr}`);
-            segments.push(`L ${channelX} ${y2 - safeCr}`);
-            segments.push(`A ${safeCr} ${safeCr} 0 0 0 ${channelX + safeCr} ${y2}`);
+            segments.push(\`L ${channelX - safeCr} ${d.y1}\`);
+            segments.push(\`A ${safeCr} ${safeCr} 0 0 1 ${channelX} ${d.y1 + safeCr}\`);
+            segments.push(\`L ${channelX} ${y2 - safeCr}\`);
+            segments.push(\`A ${safeCr} ${safeCr} 0 0 0 ${channelX + safeCr} ${y2}\`);
         } else if (dy < -8) {
-            segments.push(`L ${channelX - safeCr} ${d.y1}`);
-            segments.push(`A ${safeCr} ${safeCr} 0 0 0 ${channelX} ${d.y1 - safeCr}`);
-            segments.push(`L ${channelX} ${y2 + safeCr}`);
-            segments.push(`A ${safeCr} ${safeCr} 0 0 1 ${channelX + safeCr} ${y2}`);
+            segments.push(\`L ${channelX - safeCr} ${d.y1}\`);
+            segments.push(\`A ${safeCr} ${safeCr} 0 0 0 ${channelX} ${d.y1 - safeCr}\`);
+            segments.push(\`L ${channelX} ${y2 + safeCr}\`);
+            segments.push(\`A ${safeCr} ${safeCr} 0 0 1 ${channelX + safeCr} ${y2}\`);
         } else {
-            segments.push(`L ${channelX} ${d.y1}`);
-            segments.push(`L ${channelX} ${y2}`);
+            segments.push(\`L ${channelX} ${d.y1}\`);
+            segments.push(\`L ${channelX} ${y2}\`);
         }
-        segments.push(`L ${lineEndX} ${y2}`);
+        segments.push(\`L ${lineEndX} ${y2}\`);
 
         pathD = segments.join(' ');
 
@@ -2304,21 +2294,21 @@ function openFavouritesView() {
         if (favFiles.length) {
             const sec = document.createElement('div');
             sec.className = 'fav-section-title';
-            sec.innerHTML = `<i class="fas fa-file"></i> Files <span>${favFiles.length}</span>`;
+            sec.innerHTML = \`<i class="fas fa-file"></i> Files <span>${favFiles.length}</span>\`;
             list.appendChild(sec);
 
             favFiles.forEach(({ file, folderPath }) => {
                 const iconClass = getFileIcon(file.name);
                 const row = document.createElement('div');
                 row.className = 'fav-row';
-                row.innerHTML = `
+                row.innerHTML = \`
                     <div class="fav-row-icon"><i class="fas ${iconClass}"></i></div>
                     <div class="fav-row-info">
                         <div class="fav-row-name">${escapeHtml(file.name)}</div>
                         <div class="fav-row-path">${escapeHtml(folderPath)}</div>
                     </div>
                     <button class="fav-row-unfav" title="Remove favourite"><i class="fas fa-heart"></i></button>
-                `;
+                \`;
                 row.querySelector('.fav-row-unfav').addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const arr = allFiles[folderPath];
@@ -2342,20 +2332,20 @@ function openFavouritesView() {
         if (favNotes.length) {
             const sec = document.createElement('div');
             sec.className = 'fav-section-title';
-            sec.innerHTML = `<i class="fas fa-sticky-note"></i> Notes <span>${favNotes.length}</span>`;
+            sec.innerHTML = \`<i class="fas fa-sticky-note"></i> Notes <span>${favNotes.length}</span>\`;
             list.appendChild(sec);
 
             favNotes.forEach(({ note, folderPath }) => {
                 const row = document.createElement('div');
                 row.className = 'fav-row';
-                row.innerHTML = `
+                row.innerHTML = \`
                     <div class="fav-row-icon fav-row-icon-note"><i class="fas fa-sticky-note"></i></div>
                     <div class="fav-row-info">
                         <div class="fav-row-name">${escapeHtml(note.title)}</div>
                         <div class="fav-row-path">${escapeHtml(folderPath)}</div>
                     </div>
                     <button class="fav-row-unfav" title="Remove favourite"><i class="fas fa-heart"></i></button>
-                `;
+                \`;
                 row.querySelector('.fav-row-unfav').addEventListener('click', async (e) => {
                     e.stopPropagation();
                     const arr = allNotes[folderPath];
@@ -2386,13 +2376,7 @@ function openFavouritesView() {
     favView.classList.remove('hidden');
     requestAnimationFrame(() => favView.classList.add('fav-view-visible'));
 
-    const backBtn = document.getElementById('favViewBackBtn');
-    backBtn.onclick = closeFavouritesView;
-    // Fix Android 300ms tap delay
-    backBtn.addEventListener('touchend', function(e) {
-        e.preventDefault();
-        closeFavouritesView();
-    }, { passive: false });
+    document.getElementById('favViewBackBtn').onclick = closeFavouritesView;
 }
 
 function checkFavEmpty(list) {
@@ -2405,7 +2389,6 @@ function checkFavEmpty(list) {
 
 function closeFavouritesView() {
     const favView = document.getElementById('favouritesView');
-    if (!favView || favView.classList.contains('hidden')) return;
     favView.classList.remove('fav-view-visible');
     setTimeout(() => favView.classList.add('hidden'), 260);
     document.getElementById('departmentsSection').style.display = '';
@@ -2457,7 +2440,7 @@ function updateThemeIcon() {
     const isDark = !document.body.classList.contains('light-mode');
     const iconWrapper = themeBtn.querySelector('.theme-icon-wrapper');
     if (iconWrapper) {
-        iconWrapper.innerHTML = `<i class="fas ${isDark ? 'fa-sun' : 'fa-moon'}"></i>`;
+        iconWrapper.innerHTML = \`<i class="fas ${isDark ? 'fa-sun' : 'fa-moon'}"></i>\`;
     }
     themeBtn.dataset.theme = isDark ? 'dark' : 'light';
 }
@@ -2497,7 +2480,7 @@ function applyParticles() {
 
 function applyRadioUI(radioName) {
     const val = docmanSettings[radioName] || 'external';
-    document.querySelectorAll(`[data-radio="${radioName}"]`).forEach(dot => {
+    document.querySelectorAll(\`[data-radio="${radioName}"]\`).forEach(dot => {
         dot.classList.toggle('active', dot.getAttribute('data-val') === val);
     });
 }
@@ -2513,21 +2496,21 @@ function showPinVerifyModal(title, callback) {
     const overlay = document.createElement('div');
     overlay.id = 'pinVerifyModal';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;';
-    overlay.innerHTML = `
+    overlay.innerHTML = \`
         <div style="background:#1a1a1a;border:1px solid rgba(239,68,68,0.4);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
             <div style="width:48px;height:48px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.4rem;">🔒</div>
             <p style="color:#e2e8f0;font-size:0.95rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;">${title}</p>
             <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 20px;font-family:Inter,sans-serif;">Enter your 4-digit PIN to confirm</p>
             <div id="pinVerifyDots" style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;">
-                ${[0,1,2,3].map(i => `<div id="pvDot${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);transition:all 0.15s;"></div>`).join('')}
+                ${[0,1,2,3].map(i => \`<div id="pvDot${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);transition:all 0.15s;"></div>\`).join('')}
             </div>
             <div id="pinVerifyGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
-                ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k => `
+                ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k => \`
                     <button class="pvKey" data-key="${k}" style="padding:16px 0;border-radius:14px;border:1px solid rgba(255,255,255,${k===''?'0':'0.1'});background:${k===''?'transparent':'rgba(255,255,255,0.06)'};color:#e2e8f0;font-size:1.15rem;font-weight:600;font-family:Inter,sans-serif;cursor:${k===''?'default':'pointer'};pointer-events:${k===''?'none':'auto'};transition:background 0.1s;">${k}</button>
-                `).join('')}
+                \`).join('')}
             </div>
             <button id="pvCancel" style="width:100%;padding:12px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
-        </div>`;
+        </div>\`;
     document.body.appendChild(overlay);
 
     let entered = '';
@@ -2535,7 +2518,7 @@ function showPinVerifyModal(title, callback) {
 
     function updateDots() {
         for (let i = 0; i < 4; i++) {
-            const dot = document.getElementById(`pvDot${i}`);
+            const dot = document.getElementById(\`pvDot${i}\`);
             dot.style.background = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.15)';
             dot.style.borderColor = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.25)';
         }
@@ -2585,1093 +2568,7 @@ function showPinVerifyModal(title, callback) {
         callback(false); };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove();
             callback(false); } });
-}
 
-function promptSetPin(callback) {
-    showPromptModal('Set a 4-digit PIN:', '', async (val) => {
-        if (val === null) { callback(false); return; }
-        const pin = val.trim();
-        if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true);
-            callback(false); return; }
-        localStorage.setItem(PIN_KEY, await hashPin(pin));
-        showToast('PIN saved');
-        callback(true);
-    });
-}
 
-function updatePinStatusUI() {
-    const hasPin = !!localStorage.getItem(PIN_KEY);
-    const sub = document.getElementById('pinStatusSub');
-    const changeCard = document.getElementById('changePinCard');
-    const lockToggle = document.getElementById('appLockToggle');
-    if (sub) sub.textContent = hasPin ? 'PIN is set' : 'Not set';
-    if (changeCard) changeCard.classList.toggle('hidden', !docmanSettings.appLock);
-    if (lockToggle) lockToggle.checked = docmanSettings.appLock;
-}
 
-// ============================================================
-// EXPORT / IMPORT
-// ============================================================
-
-async function exportBackupData() {
-    showToast('Preparing backup…');
-    try {
-        const manifest = {
-            fileSystem,
-            allNotes,
-            deptColors,
-            exportedAt: new Date().toISOString(),
-            version: APP_VERSION,
-            format: 'docman-zip-v1'
-        };
-
-        manifest.fileMetadata = {};
-        for (const path in allFiles) {
-            if (allFiles[path]) {
-                manifest.fileMetadata[path] = allFiles[path].map(f => ({
-                    name: f.name,
-                    type: f.type,
-                    uploadedAt: f.uploadedAt,
-                    favourite: f.favourite || false,
-                    size: f.size || 0
-                }));
-            }
-        }
-
-        const zip = new JSZip();
-        zip.file('manifest.json', JSON.stringify(manifest));
-        const filesFolder = zip.folder('files');
-
-        // Pull every file's actual content (lazy-loading blobs as needed) into the zip.
-        // Zip entry path mirrors folderPath/fileName so import can match it back to its folder.
-        for (const path in allFiles) {
-            for (const f of (allFiles[path] || [])) {
-                try {
-                    const blob = await loadFileData(path, f.name);
-                    if (blob) {
-                        filesFolder.file(path + '/' + f.name, blob);
-                    } else {
-                        console.warn('No data found for', path, f.name, '— skipping content, metadata only');
-                    }
-                } catch (e) {
-                    console.warn('Failed to read file for backup:', path, f.name, e);
-                }
-            }
-        }
-
-        const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-        const backupFileName = `docman-backup-${Date.now()}.zip`;
-        await nativeDownload(zipBlob, backupFileName);
-        showToast('Backup exported');
-    } catch (err) {
-        console.error('Backup export failed:', err);
-        showToast('Could not export backup', true);
-    }
-}
-
-function importBackupData(file) {
-    (async () => {
-        try {
-            const zip = await JSZip.loadAsync(file);
-            const manifestEntry = zip.file('manifest.json');
-            if (!manifestEntry) { showToast('Invalid backup file', true); return; }
-
-            const manifest = JSON.parse(await manifestEntry.async('string'));
-            if (!manifest.fileSystem) { showToast('Invalid backup file', true); return; }
-
-            showConfirmModal('This will <b>replace all current data</b> with the backup. Continue?', async (ok) => {
-                if (!ok) return;
-
-                showToast('Restoring backup…');
-
-                fileSystem = manifest.fileSystem || {};
-                allNotes = manifest.allNotes || {};
-                deptColors = manifest.deptColors || {};
-                allFiles = {};
-
-                if (manifest.fileMetadata) {
-                    for (const path in manifest.fileMetadata) {
-                        if (!manifest.fileMetadata[path]) continue;
-                        allFiles[path] = [];
-                        for (const f of manifest.fileMetadata[path]) {
-                            const zipEntry = zip.file('files/' + path + '/' + f.name);
-                            let fileData = null;
-                            if (zipEntry) {
-                                try {
-                                    fileData = await zipEntry.async('blob');
-                                } catch (e) {
-                                    console.warn('Failed to read file from backup:', path, f.name, e);
-                                }
-                            }
-                            allFiles[path].push({
-                                name: f.name,
-                                type: f.type || 'application/octet-stream',
-                                uploadedAt: f.uploadedAt || Date.now(),
-                                favourite: f.favourite || false,
-                                size: f.size || (fileData ? fileData.size : 0),
-                                fileData: fileData,
-                                _hasData: !!fileData,
-                                _isBase64: false
-                            });
-                        }
-                    }
-                }
-
-                await saveFolderStructure();
-                await saveDeptColors();
-                await saveAllNotesToDB();
-                await saveAllFilesToDB();
-                await loadAllFileMetadata();
-
-                currentPath = [];
-                closeSettingsPage();
-                render();
-                showToast('Data imported successfully');
-            });
-        } catch (err) {
-            console.error('Backup import failed:', err);
-            showToast('Failed to read backup: ' + err.message, true);
-        }
-    })();
-}
-
-// ============================================================
-// CLEAR ALL DATA
-// ============================================================
-
-async function doEraseAllData() {
-    fileSystem = {};
-    allFiles = {};
-    allNotes = {};
-    deptColors = {};
-    await saveFolderStructure();
-    await saveDeptColors();
-    const tx = db.transaction(['files', 'notes', 'blobs'], 'readwrite');
-    tx.objectStore('files').clear();
-    tx.objectStore('notes').clear();
-    tx.objectStore('blobs').clear();
-    tx.commit();
-    currentPath = [];
-    closeSettingsPage();
-    render();
-    showToast('All data erased');
-}
-
-function clearAllAppData() {
-    const hasPin = !!localStorage.getItem(PIN_KEY);
-    if (hasPin) {
-        showPinVerifyModal('Erase All Data', (verified) => {
-            if (!verified) return;
-            showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
-                if (!confirmed) return;
-                await doEraseAllData();
-            });
-        });
-    } else {
-        showPromptModal('\u26a0\ufe0f No PIN set. Create a 4-digit PIN to authorize erase:', '', async (val) => {
-            if (val === null) return;
-            const pin = val.trim();
-            if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true); return; }
-            localStorage.setItem(PIN_KEY, await hashPin(pin));
-            showToast('PIN saved. Enter it again to confirm erase.');
-            showPinVerifyModal('Confirm Erase All Data', (verified) => {
-                if (!verified) return;
-                showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
-                    if (!confirmed) return;
-                    await doEraseAllData();
-                });
-            });
-        });
-    }
-}
-
-// ============================================================
-// SETTINGS PANEL RENDERERS
-// ============================================================
-
-function renderStoragePanel() {
-    let docCount = 0,
-        noteCount = 0;
-    for (const p in allFiles) if (allFiles[p]) docCount += allFiles[p].length;
-    for (const p in allNotes) if (allNotes[p]) noteCount += allNotes[p].length;
-
-    document.getElementById('storageDocCount').textContent = docCount;
-    document.getElementById('storageNoteCount').textContent = noteCount;
-
-    try {
-        if (navigator.storage && navigator.storage.estimate) {
-            navigator.storage.estimate().then(est => {
-                const usedMB = (est.usage / (1024 * 1024)).toFixed(2);
-                document.getElementById('storageSummaryUsed').textContent = usedMB + ' MB';
-            }).catch(() => {
-                document.getElementById('storageSummaryUsed').textContent = 'Unknown';
-            });
-        } else {
-            document.getElementById('storageSummaryUsed').textContent = 'Unknown';
-        }
-    } catch (e) {
-        document.getElementById('storageSummaryUsed').textContent = 'Unknown';
-    }
-}
-
-async function renderStorageDetailPanel() {
-    const body = document.getElementById('storageDetailBody');
-    body.innerHTML = '<div class="storage-detail-loading"><i class="fas fa-spinner fa-spin"></i> Calculating…</div>';
-
-    let pdfBytes = 0,
-        imgBytes = 0,
-        pdfCount = 0,
-        imgCount = 0;
-    const deptMap = {};
-
-    for (const dept of Object.keys(fileSystem)) {
-        deptMap[dept] = { bytes: 0, docs: 0, notes: 0 };
-    }
-
-    for (const folderPath in allFiles) {
-        if (!allFiles[folderPath]) continue;
-        const topDept = folderPath.split('/')[0];
-        for (const f of allFiles[folderPath]) {
-            const bytes = f.size || 0;
-            if (f.type === 'application/pdf' || f.name?.toLowerCase().endsWith('.pdf')) {
-                pdfBytes += bytes;
-                pdfCount++;
-            } else {
-                imgBytes += bytes;
-                imgCount++;
-            }
-            if (deptMap[topDept]) {
-                deptMap[topDept].bytes += bytes;
-                deptMap[topDept].docs++;
-            }
-        }
-    }
-
-    let noteBytes = 0;
-    for (const folderPath in allNotes) {
-        if (!allNotes[folderPath]) continue;
-        const topDept = folderPath.split('/')[0];
-        for (const n of allNotes[folderPath]) {
-            const nb = new Blob([JSON.stringify(n)]).size;
-            noteBytes += nb;
-            if (deptMap[topDept]) {
-                deptMap[topDept].bytes += nb;
-                deptMap[topDept].notes++;
-            }
-        }
-    }
-
-    const totalBytes = pdfBytes + imgBytes + noteBytes;
-    const fmt = (b) => b < 1024 * 1024 ? (b / 1024).toFixed(1) + ' KB' : (b / (1024 * 1024)).toFixed(2) + ' MB';
-    const pct = (b) => totalBytes > 0 ? Math.round((b / totalBytes) * 100) : 0;
-
-    const deptEntries = Object.entries(deptMap).sort((a, b) => b[1].bytes - a[1].bytes);
-
-    const deptRows = deptEntries.map(([dept, info]) => {
-        const p = pct(info.bytes);
-        return `
-            <div class="sd-dept-row">
-                <div class="sd-dept-name">${dept}</div>
-                <div class="sd-dept-bar-wrap"><div class="sd-dept-bar" style="width:${p}%"></div></div>
-                <div class="sd-dept-meta">${fmt(info.bytes)} · ${info.docs} doc${info.docs !== 1 ? 's' : ''}${info.notes ? ` · ${info.notes} note${info.notes !== 1 ? 's' : ''}` : ''}</div>
-            </div>`;
-    }).join('');
-
-    body.innerHTML = `
-        <div class="settings-group-title">By File Type</div>
-        <div class="settings-card sd-type-card">
-            <div class="sd-type-row">
-                <div class="sd-type-icon sd-icon-pdf"><i class="fas fa-file-pdf"></i></div>
-                <div class="sd-type-info"><span class="sd-type-label">PDFs</span><span class="sd-type-count">${pdfCount} file${pdfCount !== 1 ? 's' : ''}</span></div>
-                <div class="sd-type-size">${fmt(pdfBytes)}</div>
-            </div>
-            <div class="sd-type-row">
-                <div class="sd-type-icon sd-icon-img"><i class="fas fa-image"></i></div>
-                <div class="sd-type-info"><span class="sd-type-label">Images</span><span class="sd-type-count">${imgCount} file${imgCount !== 1 ? 's' : ''}</span></div>
-                <div class="sd-type-size">${fmt(imgBytes)}</div>
-            </div>
-            <div class="sd-type-row">
-                <div class="sd-type-icon sd-icon-note"><i class="fas fa-sticky-note"></i></div>
-                <div class="sd-type-info"><span class="sd-type-label">Notes</span><span class="sd-type-count">${Object.values(allNotes).reduce((a,b)=>a+(b?.length||0),0)} note${Object.values(allNotes).reduce((a,b)=>a+(b?.length||0),0) !== 1 ? 's' : ''}</span></div>
-                <div class="sd-type-size">${fmt(noteBytes)}</div>
-            </div>
-        </div>
-        <div class="settings-group-title">By Department</div>
-        <div class="settings-card sd-dept-card">
-            ${deptEntries.length ? deptRows : '<div class="sd-empty">No departments yet</div>'}
-        </div>
-        <div class="sd-total-note">Total estimated: <b>${fmt(totalBytes)}</b></div>
-    `;
-}
-
-function renderFavoritesPanel() {
-    const list = loadRecents();
-    document.getElementById('recentsCount').textContent = list.length;
-    const card = document.getElementById('recentsListCard');
-    if (!list.length) { card.innerHTML = '<div class="settings-empty-row">No recent files yet</div>'; return; }
-    card.innerHTML = list.slice(0, 10).map(r => `
-        <div class="dept-manage-row">
-            <div class="settings-item-icon settings-icon-favorites" style="width:32px;height:32px;font-size:0.8rem;flex-shrink:0"><i class="fas fa-file"></i></div>
-            <div class="dept-manage-name" style="font-weight:600;font-size:0.82rem;">${escapeHtml(r.name)}</div>
-            <span class="dept-manage-count">${new Date(r.time).toLocaleDateString()}</span>
-        </div>
-    `).join('');
-}
-
-function renderStatisticsPanel() {
-    let fileCount = 0,
-        noteCount = 0,
-        folderCount = 0;
-    let largestFile = { name: '—', size: 0 };
-    let largestFolder = { name: '—', count: 0 };
-
-    function countFolders(obj) {
-        for (const k in obj) if (typeof obj[k] === 'object') { folderCount++;
-            countFolders(obj[k]); }
-    }
-    countFolders(fileSystem);
-
-    for (const path in allFiles) {
-        if (!allFiles[path]) continue;
-        fileCount += allFiles[path].length;
-        const folderTotal = allFiles[path].length;
-        if (folderTotal > largestFolder.count) {
-            largestFolder = { name: path.split('/').pop() || path, count: folderTotal };
-        }
-        allFiles[path].forEach(f => {
-            const size = f.size || 0;
-            if (size > largestFile.size) largestFile = { name: f.name, size };
-        });
-    }
-    for (const path in allNotes) if (allNotes[path]) noteCount += allNotes[path].length;
-
-    document.getElementById('statTotalFiles').textContent = fileCount;
-    document.getElementById('statTotalNotes').textContent = noteCount;
-    document.getElementById('statTotalFolders').textContent = folderCount;
-    document.getElementById('statTotalDepts').textContent = Object.keys(fileSystem).length;
-    document.getElementById('statLargestFile').textContent = largestFile.size > 0 ?
-        `${largestFile.name} (${(largestFile.size / (1024 * 1024)).toFixed(2)} MB)` :
-        '—';
-    document.getElementById('statLargestFolder').textContent = largestFolder.count > 0 ?
-        `${largestFolder.name} (${largestFolder.count} files)` :
-        '—';
-}
-
-function renderDepartmentsManagePanel() {
-    const list = document.getElementById('deptManageList');
-    const depts = Object.keys(fileSystem);
-    document.getElementById('deptManageCount').textContent = depts.length;
-    if (!depts.length) { list.innerHTML = '<div class="settings-empty-row">No departments yet</div>'; return; }
-    list.innerHTML = depts.map(dept => {
-        const total = countDepartmentFiles(fileSystem[dept], [dept]);
-        return `
-            <div class="dept-manage-row">
-                <div class="dept-manage-dot"${deptColors[dept] ? ` style="background:${deptColors[dept]}"` : ''}></div>
-                <div class="dept-manage-name">${escapeHtml(dept)}</div>
-                <span class="dept-manage-count">${total} items</span>
-                <button class="dept-manage-delete" data-dept-del="${escapeHtml(dept)}"><i class="fas fa-trash"></i></button>
-            </div>`;
-    }).join('');
-    list.querySelectorAll('[data-dept-del]').forEach(btn => {
-        btn.onclick = () => {
-            const dept = btn.getAttribute('data-dept-del');
-            showConfirmModal(`Delete department "<b>${escapeHtml(dept)}</b>" and everything inside it?`, async (confirmed) => {
-                if (!confirmed) return;
-                delete fileSystem[dept];
-                delete deptColors[dept];
-                await saveFolderStructure();
-                await saveDeptColors();
-                renderDepartmentsManagePanel();
-                refreshSettingsListSubtitles();
-                if (currentPath[0] === dept) currentPath = [];
-                render();
-                showToast(`Department "${dept}" deleted`);
-            });
-        };
-    });
-}
-
-function refreshSettingsListSubtitles() {
-    const deptCount = Object.keys(fileSystem).length;
-    const deptSub = document.getElementById('settingsDeptSub');
-    if (deptSub) deptSub.textContent = `${deptCount} department${deptCount === 1 ? '' : 's'}`;
-    updateStorageSummarySubtitle();
-}
-
-async function updateStorageSummarySubtitle() {
-    const sub = document.getElementById('settingsStorageSub');
-    try {
-        if (navigator.storage && navigator.storage.estimate) {
-            const est = await navigator.storage.estimate();
-            const usedMB = (est.usage / (1024 * 1024)).toFixed(1);
-            if (sub) sub.textContent = `${usedMB} MB used`;
-        } else if (sub) sub.textContent = 'Tap to view';
-    } catch (e) { if (sub) sub.textContent = 'Tap to view'; }
-}
-
-// ============================================================
-// SETTINGS PAGE INIT
-// ============================================================
-
-const settingsPanelRenderers = {
-    storage: renderStoragePanel,
-    appearance: applyThemePickUI,
-    favorites: renderFavoritesPanel,
-    statistics: renderStatisticsPanel,
-    departments: renderDepartmentsManagePanel,
-    security: updatePinStatusUI
-};
-
-function showSettingsScreen(screenId) {
-    document.querySelectorAll('.settings-screen').forEach(s => s.classList.remove('settings-screen-active'));
-    const target = document.getElementById(screenId);
-    if (target) target.classList.add('settings-screen-active');
-    document.querySelector('.settings-page-inner').scrollTop = 0;
-}
-
-function openSettingsPage() {
-    const page = document.getElementById('settingsPage');
-    page.classList.remove('hidden');
-    requestAnimationFrame(() => page.classList.add('settings-page-visible'));
-    showSettingsScreen('settingsListScreen');
-    refreshSettingsListSubtitles();
-}
-
-function closeSettingsPage() {
-    const page = document.getElementById('settingsPage');
-    page.classList.remove('settings-page-visible');
-    setTimeout(() => page.classList.add('hidden'), 280);
-}
-
-function initSettingsPage() {
-    document.getElementById('settingsBtn').onclick = openSettingsPage;
-    document.getElementById('settingsCloseBtn').onclick = closeSettingsPage;
-
-    document.querySelectorAll('.settings-panel-back').forEach(btn => {
-        btn.onclick = () => showSettingsScreen('settingsListScreen');
-    });
-
-    document.querySelectorAll('.settings-item[data-panel]').forEach(item => {
-        item.onclick = () => {
-            const panel = item.getAttribute('data-panel');
-            showSettingsScreen('settingsPanel-' + panel);
-            if (settingsPanelRenderers[panel]) settingsPanelRenderers[panel]();
-        };
-    });
-
-    document.getElementById('settingsPage').addEventListener('click', (e) => {
-        if (e.target.id === 'settingsPage') closeSettingsPage();
-    });
-
-    // Appearance
-    document.getElementById('themePickDark').onclick = () => {
-        docmanSettings.theme = 'dark';
-        saveSettings();
-        applyTheme('dark');
-    };
-    document.getElementById('themePickLight').onclick = () => {
-        docmanSettings.theme = 'light';
-        saveSettings();
-        applyTheme('light');
-    };
-    document.getElementById('themePickSystem').onclick = () => {
-        docmanSettings.theme = 'system';
-        saveSettings();
-        applyTheme('system');
-    };
-
-    const enableAnimToggle = document.getElementById('enableAnimationsToggle');
-    enableAnimToggle.checked = docmanSettings.enableAnimations;
-    enableAnimToggle.onchange = () => {
-        docmanSettings.enableAnimations = enableAnimToggle.checked;
-        saveSettings();
-        applyAnimations();
-    };
-
-    const enableParticlesToggle = document.getElementById('enableParticlesToggle');
-    enableParticlesToggle.checked = docmanSettings.enableParticles;
-    enableParticlesToggle.onchange = () => {
-        docmanSettings.enableParticles = enableParticlesToggle.checked;
-        saveSettings();
-        applyParticles();
-    };
-
-    // PDF Settings
-    document.querySelectorAll('[data-radio="pdfOpen"]').forEach(dot => {
-        dot.parentElement.onclick = () => {
-            docmanSettings.pdfOpen = dot.getAttribute('data-val');
-            saveSettings();
-            applyRadioUI('pdfOpen');
-        };
-    });
-    applyRadioUI('pdfOpen');
-
-    const thresholdVal = document.getElementById('pdfThresholdVal');
-    thresholdVal.textContent = docmanSettings.pdfThreshold;
-    document.getElementById('pdfThresholdDown').onclick = () => {
-        if (docmanSettings.pdfThreshold > 1) {
-            docmanSettings.pdfThreshold--;
-            thresholdVal.textContent = docmanSettings.pdfThreshold;
-            saveSettings();
-        }
-    };
-    document.getElementById('pdfThresholdUp').onclick = () => {
-        if (docmanSettings.pdfThreshold < 500) {
-            docmanSettings.pdfThreshold++;
-            thresholdVal.textContent = docmanSettings.pdfThreshold;
-            saveSettings();
-        }
-    };
-
-    // Favorites & Recents
-    const showRecentsToggle = document.getElementById('showRecentsToggle');
-    showRecentsToggle.checked = docmanSettings.showRecents;
-    showRecentsToggle.onchange = () => {
-        docmanSettings.showRecents = showRecentsToggle.checked;
-        saveSettings();
-    };
-
-    const showFavoritesToggle = document.getElementById('showFavoritesToggle');
-    showFavoritesToggle.checked = docmanSettings.showFavorites;
-    showFavoritesToggle.onchange = () => {
-        docmanSettings.showFavorites = showFavoritesToggle.checked;
-        saveSettings();
-    };
-
-    const recentsLimitVal = document.getElementById('recentsLimitVal');
-    recentsLimitVal.textContent = docmanSettings.recentsLimit;
-    document.getElementById('recentsLimitDown').onclick = () => {
-        if (docmanSettings.recentsLimit > 5) {
-            docmanSettings.recentsLimit -= 5;
-            recentsLimitVal.textContent = docmanSettings.recentsLimit;
-            saveSettings();
-        }
-    };
-    document.getElementById('recentsLimitUp').onclick = () => {
-        if (docmanSettings.recentsLimit < 100) {
-            docmanSettings.recentsLimit += 5;
-            recentsLimitVal.textContent = docmanSettings.recentsLimit;
-            saveSettings();
-        }
-    };
-
-    document.getElementById('clearRecentsBtn').onclick = () => {
-        showConfirmModal('Clear your recently opened files history?', (ok) => {
-            if (!ok) return;
-            saveRecents([]);
-            renderFavoritesPanel();
-            showToast('Recents cleared');
-        });
-    };
-
-    // Search Settings
-    const searchNotesToggle = document.getElementById('searchNotesToggle');
-    searchNotesToggle.checked = docmanSettings.searchNotes;
-    searchNotesToggle.onchange = () => {
-        docmanSettings.searchNotes = searchNotesToggle.checked;
-        saveSettings();
-    };
-
-    const searchFileNamesToggle = document.getElementById('searchFileNamesToggle');
-    searchFileNamesToggle.checked = docmanSettings.searchFileNames;
-    searchFileNamesToggle.onchange = () => {
-        docmanSettings.searchFileNames = searchFileNamesToggle.checked;
-        saveSettings();
-    };
-
-    const searchFolderNamesToggle = document.getElementById('searchFolderNamesToggle');
-    searchFolderNamesToggle.checked = docmanSettings.searchFolderNames;
-    searchFolderNamesToggle.onchange = () => {
-        docmanSettings.searchFolderNames = searchFolderNamesToggle.checked;
-        saveSettings();
-    };
-
-    document.getElementById('clearSearchHistoryBtn').onclick = () => {
-        showConfirmModal('Clear your saved search history?', (ok) => {
-            if (!ok) return;
-            localStorage.removeItem(SEARCH_HISTORY_KEY);
-            showToast('Search history cleared');
-        });
-    };
-
-    // Departments
-    document.getElementById('settingsAddDeptBtn').onclick = () => {
-        addNewDepartment();
-        setTimeout(renderDepartmentsManagePanel, 50);
-        setTimeout(refreshSettingsListSubtitles, 50);
-    };
-
-    // Security
-    const appLockToggle = document.getElementById('appLockToggle');
-    appLockToggle.onchange = () => {
-        if (appLockToggle.checked && !localStorage.getItem(PIN_KEY)) {
-            promptSetPin((success) => {
-                if (success) {
-                    docmanSettings.appLock = true;
-                    saveSettings();
-                } else {
-                    appLockToggle.checked = false;
-                }
-                updatePinStatusUI();
-            });
-        } else {
-            docmanSettings.appLock = appLockToggle.checked;
-            saveSettings();
-            updatePinStatusUI();
-        }
-    };
-    document.getElementById('changePinBtn').onclick = () => promptSetPin(() => {});
-
-    // Storage
-    document.getElementById('exportDataBtn').onclick = exportBackupData;
-    document.getElementById('clearAllDataBtn').onclick = clearAllAppData;
-    document.getElementById('viewStorageDetailsBtn').onclick = () => {
-        showSettingsScreen('settingsPanel-storageDetail');
-        renderStorageDetailPanel();
-    };
-
-    const importFileInput = document.getElementById('importFileInput');
-    document.getElementById('importDataBtn').onclick = () => importFileInput.click();
-    importFileInput.onchange = (e) => {
-        if (e.target.files[0]) {
-            importBackupData(e.target.files[0]);
-            e.target.value = '';
-        }
-    };
-
-    // About
-    document.getElementById('checkUpdatesBtn').onclick = () => showToast("You're on the latest version ✓");
-
-    applyTheme(docmanSettings.theme || 'dark');
-    applyAnimations();
-    applyParticles();
-}
-
-// ============================================================
-// SHOW INFO
-// ============================================================
-
-function showInfo() {
-    const deptCount = Object.keys(fileSystem).length;
-    let folderCount = 0,
-        fileCount = 0,
-        noteCount = 0;
-
-    function countRecursive(obj, path) {
-        for (const key of Object.keys(obj)) {
-            const p = path ? path + '/' + key : key;
-            folderCount++;
-            if (allFiles[p]) fileCount += allFiles[p].length;
-            if (allNotes[p]) noteCount += allNotes[p].length;
-            if (obj[key] && typeof obj[key] === 'object') countRecursive(obj[key], p);
-        }
-    }
-    countRecursive(fileSystem, '');
-
-    document.getElementById('infoStatDepts').textContent = deptCount;
-    document.getElementById('infoStatFolders').textContent = folderCount;
-    document.getElementById('infoStatFiles').textContent = fileCount;
-    document.getElementById('infoStatNotes').textContent = noteCount;
-    document.getElementById('deptInfoVersion').textContent = APP_VERSION;
-
-    const modal = document.getElementById('deptInfoModal');
-    modal.style.display = 'flex';
-    requestAnimationFrame(() => {
-        modal.classList.add('show');
-    });
-}
-
-function closeDeptInfo() {
-    const modal = document.getElementById('deptInfoModal');
-    modal.classList.remove('show');
-    setTimeout(() => { modal.style.display = 'none'; }, 80);
-}
-
-// ============================================================
-// ATTACH PRESS EFFECTS
-// ============================================================
-
-function attachPressEffects() {
-    const selectors = [
-        '#homeBtn', '.type-btn', '#uploadBtn', '#newNoteBtn',
-        '.action-btn', '.fav-file-btn', '.fav-note-btn',
-        '.rename-file-btn', '.delete-file-btn', '.rename-note-btn',
-        '.delete-note-btn', '.clear-search', '.modal-close',
-        '.modal-footer button', '.breadcrumb-item', '.card', '.dept-oval',
-        '#closeImageViewer'
-    ];
-
-    document.querySelectorAll(selectors.join(',')).forEach(el => {
-        el.removeEventListener('click', pressHandler);
-        el.removeEventListener('touchstart', pressHandler, { passive: false });
-        el.removeEventListener('mousedown', pressHandler);
-        el.addEventListener('mousedown', pressHandler);
-        el.addEventListener('touchstart', pressHandler, { passive: false });
-        if (window.getComputedStyle(el).cursor === 'auto') el.style.cursor = 'pointer';
-    });
-}
-
-function pressHandler(e) {
-    if (this.hasAttribute('data-press-animating') || (e.button === 2)) return;
-    if (e.type === 'touchstart' && this.hasAttribute('data-touch-processing')) return;
-    if (e.type === 'touchstart') {
-        this.setAttribute('data-touch-processing', 'true');
-        setTimeout(() => this.removeAttribute('data-touch-processing'), 200);
-    }
-    addDepthEffect(this, e);
-}
-
-function addDepthEffect(element, event) {
-    if (!element || element.hasAttribute('data-press-animating')) return;
-    element.setAttribute('data-press-animating', 'true');
-    haptic.press();
-    setTimeout(() => {
-        element.classList.remove('press-depth-3d');
-        element.removeAttribute('data-press-animating');
-    }, 150);
-}
-
-// ============================================================
-// HANDLE FILES UPLOAD
-// ============================================================
-
-async function handleFiles(files) {
-    for (let f of files) {
-        const fileType = getFileType(f.name);
-        if (fileType === 'image' || fileType === 'pdf') {
-            await addFileToCurrentFolder(f);
-        } else {
-            showToast('Skipped: ' + f.name + ' (not supported)', true);
-        }
-    }
-    render();
-}
-
-function triggerUpload() {
-    document.getElementById('fileInput').click();
-}
-
-function triggerNewNote() {
-    openNewNoteModal();
-}
-
-// ============================================================
-// IMAGE VIEWER GESTURES
-// ============================================================
-
-function initImageViewerGestures() {
-    const body = document.querySelector('.image-viewer-body');
-    const img = document.getElementById('viewerImage');
-    if (!body || !img) return;
-
-    let scale = 1,
-        minScale = 1,
-        maxScale = 5;
-    let originX = 0,
-        originY = 0;
-    let lastDist = 0;
-    let isDragging = false,
-        dragStartX = 0,
-        dragStartY = 0;
-    let lastOriginX = 0,
-        lastOriginY = 0;
-
-    function applyTransform() {
-        img.style.transform = `scale(${scale}) translate(${originX}px, ${originY}px)`;
-        img.style.cursor = scale > 1 ? 'grab' : 'default';
-    }
-
-    function resetTransform() {
-        scale = 1;
-        originX = 0;
-        originY = 0;
-        img.style.transition = 'transform 0.2s ease';
-        applyTransform();
-        setTimeout(() => { img.style.transition = ''; }, 220);
-    }
-
-    document.getElementById('closeImageViewer').addEventListener('click', resetTransform);
-    body.addEventListener('dblclick', () => {
-        scale === 1 ? (scale = 2.5, applyTransform()) : resetTransform();
-    });
-
-    body.addEventListener('touchstart', (e) => {
-        img.style.transition = '';
-        if (e.touches.length === 2) {
-            lastDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-        } else if (e.touches.length === 1 && scale > 1) {
-            isDragging = true;
-            dragStartX = e.touches[0].clientX;
-            dragStartY = e.touches[0].clientY;
-            lastOriginX = originX;
-            lastOriginY = originY;
-        }
-    }, { passive: true });
-
-    body.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2) {
-            e.preventDefault();
-            const dist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            const delta = dist / lastDist;
-            scale = Math.min(maxScale, Math.max(minScale, scale * delta));
-            lastDist = dist;
-            applyTransform();
-        } else if (isDragging && e.touches.length === 1) {
-            e.preventDefault();
-            originX = lastOriginX + (e.touches[0].clientX - dragStartX) / scale;
-            originY = lastOriginY + (e.touches[0].clientY - dragStartY) / scale;
-            applyTransform();
-        }
-    }, { passive: false });
-
-    body.addEventListener('touchend', (e) => {
-        if (e.touches.length < 2) isDragging = false;
-        if (scale < 1.05) resetTransform();
-    });
-
-    body.addEventListener('mousedown', (e) => {
-        if (scale > 1) {
-            isDragging = true;
-            dragStartX = e.clientX;
-            dragStartY = e.clientY;
-            lastOriginX = originX;
-            lastOriginY = originY;
-            img.style.cursor = 'grabbing';
-        }
-    });
-
-    window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        originX = lastOriginX + (e.clientX - dragStartX) / scale;
-        originY = lastOriginY + (e.clientY - dragStartY) / scale;
-        applyTransform();
-    });
-
-    window.addEventListener('mouseup', () => {
-        isDragging = false;
-        if (scale > 1) img.style.cursor = 'grab';
-    });
-
-    const origClose = window.closeImageViewer;
-    window.closeImageViewer = function() {
-        origClose();
-        resetTransform();
-    };
-}
-
-// ============================================================
-// DOM CONTENT LOADED
-// ============================================================
-
-document.addEventListener('DOMContentLoaded', async () => {
-    // Inject version
-    const vEls = ['aboutVersionBadge', 'aboutVersionRow', 'deptInfoVersion'];
-    vEls.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = APP_VERSION;
-    });
-
-    // Theme
-    const themeBtn = document.getElementById('themeToggle');
-    if (themeBtn) themeBtn.onclick = toggleTheme;
-
-    const savedTheme = docmanSettings.theme || localStorage.getItem('docman_theme') || 'dark';
-    if (savedTheme === 'light-mode' || savedTheme === 'light') {
-        document.body.classList.add('light-mode');
-    } else if (savedTheme === 'system') {
-        if (!window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            document.body.classList.add('light-mode');
-        }
-    }
-    updateThemeIcon();
-
-    // Tabs
-    document.getElementById('pdfTabBtn').onclick = () => setActiveTab('pdfs');
-    document.getElementById('notesTabBtn').onclick = () => setActiveTab('notes');
-
-    // Keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            closeImageViewer();
-            closePdfViewer();
-        }
-    });
-
-    // Image viewer close
-    const closeBtn = document.getElementById('closeImageViewer');
-    if (closeBtn) closeBtn.onclick = closeImageViewer;
-
-    const viewer = document.getElementById('imageViewer');
-    if (viewer) {
-        viewer.addEventListener('click', (e) => {
-            if (e.target === viewer) closeImageViewer();
-        });
-    }
-
-    // File input
-    document.getElementById('fileInput').addEventListener('change', async (e) => {
-        await handleFiles(Array.from(e.target.files));
-        e.target.value = '';
-    });
-
-    document.getElementById('newNoteBtn').onclick = triggerNewNote;
-    document.getElementById('searchInput').addEventListener('input', () => render());
-    document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
-    document.getElementById('homeBtn').addEventListener('click', goHome);
-    document.getElementById('uploadBtn').addEventListener('click', triggerUpload);
-
-    // Settings
-    initSettingsPage();
-
-    // Load data
-    showLoadingSkeleton();
-    await initDB();
-
-    const folderReq = db.transaction('folderStructure', 'readonly').objectStore('folderStructure').get('structure');
-    folderReq.onsuccess = () => {
-        if (folderReq.result) {
-            fileSystem = folderReq.result.value;
-        } else {
-            fileSystem = {
-                "REMELT": {
-                    "FURNACE 1": {},
-                    "FURNACE 2": {},
-                    "FURNACE 3": {},
-                    "FURNACE 4": {},
-                    "FURNACE 5": {},
-                    "ACD": {},
-                    "DBF": {},
-                    "ROD FEEDER": {},
-                    "LAUNDER HEATERS": {},
-                    "LAUNDER PANEL": {},
-                    "HPU 1": {},
-                    "HPU 2": {},
-                    "A": {},
-                    "B": {},
-                    "C": {},
-                    "D": {},
-                    "E": {},
-                },
-                "CASTER": {},
-                "HRM": {},
-                "CRM": {},
-                "ANNEALING": {},
-                "TLL": {},
-                "SLITTER": {},
-                "UTILITY": {}
-            };
-            saveFolderStructure();
-        }
-
-        const deptColorsReq = db.transaction('folderStructure', 'readonly').objectStore('folderStructure').get('deptColors');
-        deptColorsReq.onsuccess = () => {
-            if (deptColorsReq.result) {
-                deptColors = deptColorsReq.result.value;
-            }
-        };
-
-        loadAllFileMetadata().then(() => {
-            const notesReq = db.transaction('notes', 'readonly').objectStore('notes').getAll();
-            notesReq.onsuccess = () => {
-                allNotes = {};
-                for (let item of notesReq.result) {
-                    allNotes[item.folderPath] = item.notes;
-                }
-                render();
-
-                const migrationRun = localStorage.getItem('docman_migration_done');
-                if (!migrationRun) {
-                    setTimeout(async () => {
-                        await migrateBase64ToBlob();
-                        localStorage.setItem('docman_migration_done', 'true');
-                    }, 1500);
-                }
-
-                window.docmanReady = true;
-            };
-            notesReq.onerror = () => {
-                console.warn('Notes load failed, proceeding anyway');
-                render();
-                window.docmanReady = true;
-            };
-        }).catch(err => {
-            console.warn('loadAllFileMetadata failed:', err);
-            render();
-            window.docmanReady = true;
-        });
-    };
-
-    attachPressEffects();
-    initImageViewerGestures();
-
-    let resizeTimeout;
-    window.addEventListener('resize', () => {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(drawDeptConnectors, 100);
-    });
-
-    if (typeof ResizeObserver !== 'undefined') {
-        let roTimeout;
-        const roObs = new ResizeObserver(() => {
-            clearTimeout(roTimeout);
-            roTimeout = setTimeout(drawDeptConnectors, 80);
-        });
-        const roWatch = document.querySelector('.departments-wrapper') || document.body;
-        roObs.observe(roWatch);
-    }
-
-    window.addEventListener('load', () => {
-        setTimeout(drawDeptConnectors, 300);
-        setTimeout(drawDeptConnectors, 800);
-        setTimeout(drawDeptConnectors, 1500);
-    });
-
-    const redrawOnFirstInteraction = () => {
-        drawDeptConnectors();
-        window.removeEventListener('scroll', redrawOnFirstInteraction, true);
-        window.removeEventListener('touchstart', redrawOnFirstInteraction, true);
-    };
-    window.addEventListener('scroll', redrawOnFirstInteraction, { capture: true, passive: true, once: true });
-    window.addEventListener('touchstart', redrawOnFirstInteraction, { capture: true, passive: true, once: true });
-
-    document.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-    });
-
-    document.addEventListener('touchstart', function(e) {
-        if (e.target.tagName === 'IMG' || e.target.classList.contains('logo-tray-icon') ||
-            e.target.classList.contains('header-gear-icon') || e.target.classList.contains('home-icon-img')) {
-            e.preventDefault();
-        }
-    }, { passive: false });
-
-    window.selectDepartment = selectDepartment;
-    window.goBack = goBack;
-    window.goHome = goHome;
-    window.triggerUpload = triggerUpload;
-    window.triggerNewNote = triggerNewNote;
-    window.clearSearch = clearSearch;
-    window.navigateToBreadcrumb = navigateToBreadcrumb;
-    window.renameCurrentFolder = renameCurrentFolder;
-    window.deleteCurrentFolder = deleteCurrentFolder;
-    window.addNewFolder = addNewFolder;
-    window.addNewDepartment = addNewDepartment;
-    window.openFile = openFile;
-    window.openNote = openNote;
-    window.closeNoteModal = closeNoteModal;
-    window.renameNote = renameNote;
-    window.deleteNoteFromFolder = deleteNoteFromFolder;
-    window.closeImageViewer = closeImageViewer;
-    window.showInfo = showInfo;
-    window.closeDeptInfo = closeDeptInfo;
-});
-
-// ============================================================
-// END OF FILE
-// ============================================================
+Yahoo Mail: Search, organise, conquer
