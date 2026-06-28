@@ -1187,6 +1187,15 @@ function openPdfViewer(fileData, fileName) {
     viewer._fileName = fileName;
     viewer._fileData = fileData;
 
+    // Fix Android 300ms tap delay on the close button by responding to touchend
+    const closeBtn = viewer.querySelector('button[onclick="closePdfViewer()"]');
+    if (closeBtn) {
+        closeBtn.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            closePdfViewer();
+        }, { passive: false });
+    }
+
     const escHandler = function(e) {
         if (e.key === 'Escape') {
             closePdfViewer();
@@ -1309,6 +1318,7 @@ function openPdfViewer(fileData, fileName) {
 
 function closePdfViewer() {
     const viewer = document.getElementById('pdfViewer');
+    if (!viewer) return;
     if (viewer) {
         if (viewer._url) {
             URL.revokeObjectURL(viewer._url);
@@ -2375,7 +2385,13 @@ function openFavouritesView() {
     favView.classList.remove('hidden');
     requestAnimationFrame(() => favView.classList.add('fav-view-visible'));
 
-    document.getElementById('favViewBackBtn').onclick = closeFavouritesView;
+    const backBtn = document.getElementById('favViewBackBtn');
+    backBtn.onclick = closeFavouritesView;
+    // Fix Android 300ms tap delay
+    backBtn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        closeFavouritesView();
+    }, { passive: false });
 }
 
 function checkFavEmpty(list) {
@@ -2388,6 +2404,7 @@ function checkFavEmpty(list) {
 
 function closeFavouritesView() {
     const favView = document.getElementById('favouritesView');
+    if (!favView || favView.classList.contains('hidden')) return;
     favView.classList.remove('fav-view-visible');
     setTimeout(() => favView.classList.add('hidden'), 260);
     document.getElementById('departmentsSection').style.display = '';
