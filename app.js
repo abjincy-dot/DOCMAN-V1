@@ -1170,13 +1170,18 @@ function openPdfViewer(fileData, fileName) {
     viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
 
     viewer.innerHTML = `
-        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:2;min-height:52px;touch-action:manipulation;">
-            <button onclick="closePdfViewer()" ontouchstart="" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#ef4444;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;letter-spacing:0.02em;touch-action:manipulation;">
+        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;flex-shrink:0;z-index:2;min-height:52px;touch-action:manipulation;">
+            <button onclick="closePdfViewer()" ontouchstart="" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#ef4444;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;letter-spacing:0.02em;touch-action:manipulation;flex-shrink:0;">
                 Close
             </button>
-            <span class="pdf-viewer-title" style="flex:1;color:#e2e8f0;font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(fileName)}</span>
+            <span class="pdf-viewer-title" style="flex:1;color:#e2e8f0;font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;">${escapeHtml(fileName)}</span>
+            <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                <button id="pdfZoomOut" ontouchstart="" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);border-radius:7px;color:#e2e8f0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;touch-action:manipulation;">−</button>
+                <span id="pdfZoomLabel" style="color:#94a3b8;font-size:0.75rem;font-family:Inter,sans-serif;min-width:36px;text-align:center;">100%</span>
+                <button id="pdfZoomIn" ontouchstart="" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);border-radius:7px;color:#e2e8f0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;touch-action:manipulation;">+</button>
+            </div>
         </div>
-        <div id="pdfViewerBody" style="flex:1;overflow-y:auto;overflow-x:hidden;background:#2a2a2a;padding:12px 8px;-webkit-overflow-scrolling:touch;touch-action:pan-y;">
+        <div id="pdfViewerBody" style="flex:1;overflow-y:auto;overflow-x:auto;background:#2a2a2a;padding:12px 8px;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;">
             <div id="pdfCanvasContainer" style="display:flex;flex-direction:column;align-items:center;gap:8px;"></div>
             <div id="pdfLoadingMsg" style="color:#94a3b8;text-align:center;padding:40px 0;font-family:Inter,sans-serif;font-size:0.9rem;">Loading PDF…</div>
         </div>
@@ -1196,6 +1201,93 @@ function openPdfViewer(fileData, fileName) {
     document.addEventListener('keydown', escHandler);
     viewer._escHandler = escHandler;
 
+    // ---- Zoom state ----
+    let pdfZoom = 1.0;
+    const ZOOM_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
+    let pdfDocRef = null;
+    let baseViewerWidth = 0;
+
+    function updateZoomLabel() {
+        const lbl = document.getElementById('pdfZoomLabel');
+        if (lbl) lbl.textContent = Math.round(pdfZoom * 100) + '%';
+    }
+
+    function rerenderAllPages() {
+        const container = document.getElementById('pdfCanvasContainer');
+        const viewerBody = document.getElementById('pdfViewerBody');
+        if (!container || !viewerBody || !pdfDocRef) return;
+        container.innerHTML = '';
+        renderAllPagesForDoc(pdfDocRef, baseViewerWidth);
+    }
+
+    function renderAllPagesForDoc(pdfDoc, baseWidth) {
+        const container = document.getElementById('pdfCanvasContainer');
+        if (!container) return;
+        const totalPages = pdfDoc.numPages;
+        const scaledWidth = Math.round(baseWidth * pdfZoom);
+
+        const placeholders = [];
+        for (let i = 1; i <= totalPages; i++) {
+            const placeholder = document.createElement('div');
+            placeholder.dataset.page = i;
+            placeholder.dataset.rendered = 'false';
+            placeholder.style.cssText = `width:${scaledWidth}px;min-height:200px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;`;
+            placeholder.textContent = 'Page ' + i;
+            container.appendChild(placeholder);
+            placeholders.push(placeholder);
+        }
+
+        function renderPageInto(placeholder, pageNum) {
+            if (placeholder.dataset.rendered === 'true') return;
+            placeholder.dataset.rendered = 'true';
+            placeholder.textContent = '';
+
+            pdfDoc.getPage(pageNum).then(function(page) {
+                const viewport = page.getViewport({ scale: 1 });
+                const dpr = Math.min(window.devicePixelRatio || 1, 3);
+                const scale = (scaledWidth / viewport.width);
+                const scaledViewport = page.getViewport({ scale: scale * dpr });
+                const displayHeight = viewport.height * scale;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = scaledViewport.width;
+                canvas.height = scaledViewport.height;
+                canvas.style.cssText = `display:block;width:${scaledWidth}px;height:${displayHeight}px;max-width:none;border-radius:4px;touch-action:pan-x pan-y;`;
+                placeholder.style.minHeight = '';
+                placeholder.style.alignItems = '';
+                placeholder.style.justifyContent = '';
+                placeholder.appendChild(canvas);
+
+                const ctx = canvas.getContext('2d', { alpha: false });
+                page.render({
+                    canvasContext: ctx,
+                    viewport: scaledViewport,
+                    intent: 'display'
+                });
+            });
+        }
+
+        if (placeholders[0]) renderPageInto(placeholders[0], 1);
+        if (placeholders[1]) renderPageInto(placeholders[1], 2);
+
+        if ('IntersectionObserver' in window) {
+            const observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        const el = entry.target;
+                        renderPageInto(el, parseInt(el.dataset.page));
+                        observer.unobserve(el);
+                    }
+                });
+            }, { rootMargin: '200px' });
+            placeholders.slice(2).forEach(function(p) { observer.observe(p); });
+        } else {
+            placeholders.slice(2).forEach(function(p, i) {
+                setTimeout(function() { renderPageInto(p, i + 3); }, i * 300);
+            });
+        }
+    }
+
     // Load PDF.js from CDN if not already loaded
     function renderPdfWithPdfJs(pdfUrl) {
         const PDFJS_CDN = 'vendor/pdfjs/pdf.min.js';
@@ -1210,78 +1302,76 @@ function openPdfViewer(fileData, fileName) {
             const viewerBody = document.getElementById('pdfViewerBody');
             if (!container || !viewerBody) return;
 
-            const viewerWidth = viewerBody.clientWidth - 16;
+            baseViewerWidth = viewerBody.clientWidth - 16;
 
             pdfjsLib.getDocument(pdfUrl).promise.then(function(pdfDoc) {
                 if (loadingMsg) loadingMsg.style.display = 'none';
-                const totalPages = pdfDoc.numPages;
+                pdfDocRef = pdfDoc;
+                renderAllPagesForDoc(pdfDoc, baseViewerWidth);
 
-                // Create placeholder divs for all pages first
-                const placeholders = [];
-                for (let i = 1; i <= totalPages; i++) {
-                    const placeholder = document.createElement('div');
-                    placeholder.dataset.page = i;
-                    placeholder.dataset.rendered = 'false';
-                    placeholder.style.cssText = `width:${viewerWidth}px;min-height:200px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;`;
-                    placeholder.textContent = 'Page ' + i;
-                    container.appendChild(placeholder);
-                    placeholders.push(placeholder);
+                // Wire up zoom buttons
+                const zoomIn = document.getElementById('pdfZoomIn');
+                const zoomOut = document.getElementById('pdfZoomOut');
+
+                function applyZoom(newZoom) {
+                    pdfZoom = newZoom;
+                    updateZoomLabel();
+                    const c = document.getElementById('pdfCanvasContainer');
+                    if (c) c.innerHTML = '';
+                    renderAllPagesForDoc(pdfDocRef, baseViewerWidth);
                 }
 
-                function renderPageInto(placeholder, pageNum) {
-                    if (placeholder.dataset.rendered === 'true') return;
-                    placeholder.dataset.rendered = 'true';
-                    placeholder.textContent = '';
+                if (zoomIn) zoomIn.addEventListener('click', function() {
+                    const idx = ZOOM_STEPS.indexOf(pdfZoom);
+                    const next = idx === -1 ? ZOOM_STEPS.findIndex(s => s > pdfZoom) : idx + 1;
+                    if (next >= 0 && next < ZOOM_STEPS.length) applyZoom(ZOOM_STEPS[next]);
+                });
 
-                    pdfDoc.getPage(pageNum).then(function(page) {
-                        const viewport = page.getViewport({ scale: 1 });
-                        const dpr = Math.min(window.devicePixelRatio || 1, 3);
-                        const scale = viewerWidth / viewport.width;
-                        const scaledViewport = page.getViewport({ scale: scale * dpr });
-                        const displayHeight = viewport.height * scale;
+                if (zoomOut) zoomOut.addEventListener('click', function() {
+                    const idx = ZOOM_STEPS.indexOf(pdfZoom);
+                    const prev = idx === -1 ? ZOOM_STEPS.slice().reverse().findIndex(s => s < pdfZoom) : idx - 1;
+                    if (prev >= 0) applyZoom(ZOOM_STEPS[prev]);
+                });
 
-                        const canvas = document.createElement('canvas');
-                        canvas.width = scaledViewport.width;
-                        canvas.height = scaledViewport.height;
-                    canvas.style.cssText = `display:block;width:${viewerWidth}px;height:${displayHeight}px;max-width:100%;border-radius:4px;touch-action:pan-y;`;    
-                        placeholder.style.minHeight = '';
-                        placeholder.style.alignItems = '';
-                        placeholder.style.justifyContent = '';
-                        placeholder.appendChild(canvas);
+                // Pinch-to-zoom on touch
+                let pinchStartDist = 0;
+                let pinchStartZoom = 1;
+                viewerBody.addEventListener('touchstart', function(e) {
+                    if (e.touches.length === 2) {
+                        pinchStartDist = Math.hypot(
+                            e.touches[0].clientX - e.touches[1].clientX,
+                            e.touches[0].clientY - e.touches[1].clientY
+                        );
+                        pinchStartZoom = pdfZoom;
+                        e.preventDefault();
+                    }
+                }, { passive: false });
 
-                        const ctx = canvas.getContext('2d', { alpha: false });
-                        page.render({
-                            canvasContext: ctx,
-                            viewport: scaledViewport,
-                            intent: 'display'
-                        });
-                    });
-                }
+                viewerBody.addEventListener('touchmove', function(e) {
+                    if (e.touches.length === 2) {
+                        const dist = Math.hypot(
+                            e.touches[0].clientX - e.touches[1].clientX,
+                            e.touches[0].clientY - e.touches[1].clientY
+                        );
+                        const ratio = dist / pinchStartDist;
+                        const raw = pinchStartZoom * ratio;
+                        const clamped = Math.min(3.0, Math.max(0.5, raw));
+                        pdfZoom = clamped;
+                        updateZoomLabel();
+                        e.preventDefault();
+                    }
+                }, { passive: false });
 
-                // Render first 2 pages immediately
-                if (placeholders[0]) renderPageInto(placeholders[0], 1);
-                if (placeholders[1]) renderPageInto(placeholders[1], 2);
+                viewerBody.addEventListener('touchend', function(e) {
+                    if (pinchStartDist > 0) {
+                        // Snap to nearest step and re-render
+                        const nearest = ZOOM_STEPS.reduce((a, b) => Math.abs(b - pdfZoom) < Math.abs(a - pdfZoom) ? b : a);
+                        applyZoom(nearest);
+                        pinchStartDist = 0;
+                    }
+                });
 
-                // Lazy render remaining pages on scroll into view
-                if ('IntersectionObserver' in window) {
-                    const observer = new IntersectionObserver(function(entries) {
-                        entries.forEach(function(entry) {
-                            if (entry.isIntersecting) {
-                                const el = entry.target;
-                                renderPageInto(el, parseInt(el.dataset.page));
-                                observer.unobserve(el);
-                            }
-                        });
-                    }, { rootMargin: '200px' });
-
-                    placeholders.slice(2).forEach(function(p) { observer.observe(p); });
-                } else {
-                    placeholders.slice(2).forEach(function(p, i) {
-                        setTimeout(function() { renderPageInto(p, i + 3); }, i * 300);
-                    });
-                }
-
-  }).catch(function(err) {
+            }).catch(function(err) {
                 if (loadingMsg) loadingMsg.textContent = 'Could not render PDF: ' + err.message;
             });
         }
