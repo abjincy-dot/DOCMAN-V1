@@ -1084,6 +1084,8 @@ font-size: 1.35rem;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; font-size: 0.9rem;
     flex-shrink: 0;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 .fav-view-title {
     font-size: 1.05rem;
@@ -3525,6 +3527,11 @@ display: flex;
 align-items: center; 
 gap: 12px; 
 flex-shrink: 0; 
+}
+.pdf-viewer-header button {
+touch-action: manipulation;
+-webkit-tap-highlight-color: transparent;
+cursor: pointer;
 } 
 .pdf-viewer-title { 
 flex: 1; 
