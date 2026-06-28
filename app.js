@@ -3575,10 +3575,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }, 1500);
                 }
 
-                if (typeof window !== "undefined") {
-                    window.docmanReady = true;
-                }
+                window.docmanReady = true;
             };
+            notesReq.onerror = () => {
+                console.warn('Notes load failed, proceeding anyway');
+                render();
+                window.docmanReady = true;
+            };
+        }).catch(err => {
+            console.warn('loadAllFileMetadata failed:', err);
+            render();
+            window.docmanReady = true;
         });
     };
 
