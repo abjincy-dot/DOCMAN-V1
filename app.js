@@ -1243,8 +1243,7 @@ function openPdfViewer(fileData, fileName) {
                         const canvas = document.createElement('canvas');
                         canvas.width = scaledViewport.width;
                         canvas.height = scaledViewport.height;
-                        canvas.style.cssText = `display:block;width:${viewerWidth}px;height:${displayHeight}px;max-width:100%;border-radius:4px;`;
-
+                    canvas.style.cssText = `display:block;width:${viewerWidth}px;height:${displayHeight}px;max-width:100%;border-radius:4px;touch-action:pan-y;`;    
                         placeholder.style.minHeight = '';
                         placeholder.style.alignItems = '';
                         placeholder.style.justifyContent = '';
