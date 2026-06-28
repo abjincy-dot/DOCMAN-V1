@@ -2316,7 +2316,8 @@ animation: spin 1s linear infinite;
 .hidden { display: none !important; }
 
 
-button, .card, .action-btn, .breadcrumb-item, .type-btn, .theme-toggle, #backBtn, #uploadBtn, #newNoteBtn, .clear-search, .modal-footer button, .modal-close, .rename-file-btn, .delete-file-btn, .rename-note-btn, .delete-note-btn, .dept-oval, .close-viewer-btn { 
+button, .card, .action-btn, .breadcrumb-item, .type-btn, .theme-toggle, #backBtn, #uploadBtn, #newNoteBtn, .clear-search, .modal-footer button, .modal-close, .rename-file-btn, .delete-file-btn, .rename-note-btn, .delete-note-btn, .dept-oval, .close-viewer-btn, .fav-view-back, .pdf-viewer-header button {
+ 
 position: relative; 
 overflow: hidden; 
 -webkit-tap-highlight-color: transparent; 
