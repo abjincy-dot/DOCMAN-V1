@@ -1337,6 +1337,8 @@ function openPdfViewer(fileData, fileName) {
                 let pinchStartDist = 0;
                 let pinchStartZoom = 1;
                 let isPinching = false;
+                let pinchOriginX = '50%';
+                let pinchOriginY = '50%';
                 viewerBody.addEventListener('touchstart', function(e) {
                     if (e.touches.length === 2) {
                         pinchStartDist = Math.hypot(
@@ -1345,6 +1347,15 @@ function openPdfViewer(fileData, fileName) {
                         );
                         pinchStartZoom = pdfZoom;
                         isPinching = true;
+                        // Compute pinch midpoint relative to the canvas container
+                        const canvasContainer = document.getElementById('pdfCanvasContainer');
+                        if (canvasContainer) {
+                            const rect = canvasContainer.getBoundingClientRect();
+                            const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                            const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                            pinchOriginX = (midX - rect.left) + 'px';
+                            pinchOriginY = (midY - rect.top) + 'px';
+                        }
                         e.preventDefault();
                     }
                 }, { passive: false });
@@ -1358,11 +1369,11 @@ function openPdfViewer(fileData, fileName) {
                         const ratio = dist / pinchStartDist;
                         const raw = pinchStartZoom * ratio;
                         const clamped = Math.min(3.0, Math.max(0.5, raw));
-                        // Live CSS scale for smooth visual feedback — no re-render
+                        // Live CSS scale anchored at pinch midpoint — no re-render
                         const liveScale = clamped / pinchStartZoom;
                         const canvasContainer = document.getElementById('pdfCanvasContainer');
                         if (canvasContainer) {
-                            canvasContainer.style.transformOrigin = 'top center';
+                            canvasContainer.style.transformOrigin = `${pinchOriginX} ${pinchOriginY}`;
                             canvasContainer.style.transform = `scale(${liveScale})`;
                         }
                         pdfZoom = clamped;
@@ -1379,6 +1390,7 @@ function openPdfViewer(fileData, fileName) {
                         const canvasContainer = document.getElementById('pdfCanvasContainer');
                         if (canvasContainer) {
                             canvasContainer.style.transform = '';
+                            canvasContainer.style.transformOrigin = '';
                         }
                         // Re-render at exact zoom (no step snapping — free zoom)
                         applyZoom(Math.min(3.0, Math.max(0.5, pdfZoom)));
