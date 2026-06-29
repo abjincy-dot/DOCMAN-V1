@@ -1336,6 +1336,7 @@ function openPdfViewer(fileData, fileName) {
                 // Pinch-to-zoom on touch
                 let pinchStartDist = 0;
                 let pinchStartZoom = 1;
+                let isPinching = false;
                 viewerBody.addEventListener('touchstart', function(e) {
                     if (e.touches.length === 2) {
                         pinchStartDist = Math.hypot(
@@ -1343,12 +1344,13 @@ function openPdfViewer(fileData, fileName) {
                             e.touches[0].clientY - e.touches[1].clientY
                         );
                         pinchStartZoom = pdfZoom;
+                        isPinching = true;
                         e.preventDefault();
                     }
                 }, { passive: false });
 
                 viewerBody.addEventListener('touchmove', function(e) {
-                    if (e.touches.length === 2) {
+                    if (e.touches.length === 2 && isPinching && pinchStartDist > 0) {
                         const dist = Math.hypot(
                             e.touches[0].clientX - e.touches[1].clientX,
                             e.touches[0].clientY - e.touches[1].clientY
@@ -1356,6 +1358,13 @@ function openPdfViewer(fileData, fileName) {
                         const ratio = dist / pinchStartDist;
                         const raw = pinchStartZoom * ratio;
                         const clamped = Math.min(3.0, Math.max(0.5, raw));
+                        // Live CSS scale for smooth visual feedback — no re-render
+                        const liveScale = clamped / pinchStartZoom;
+                        const canvasContainer = document.getElementById('pdfCanvasContainer');
+                        if (canvasContainer) {
+                            canvasContainer.style.transformOrigin = 'top center';
+                            canvasContainer.style.transform = `scale(${liveScale})`;
+                        }
                         pdfZoom = clamped;
                         updateZoomLabel();
                         e.preventDefault();
@@ -1363,11 +1372,16 @@ function openPdfViewer(fileData, fileName) {
                 }, { passive: false });
 
                 viewerBody.addEventListener('touchend', function(e) {
-                    if (pinchStartDist > 0) {
-                        // Snap to nearest step and re-render
-                        const nearest = ZOOM_STEPS.reduce((a, b) => Math.abs(b - pdfZoom) < Math.abs(a - pdfZoom) ? b : a);
-                        applyZoom(nearest);
+                    if (isPinching && pinchStartDist > 0) {
+                        isPinching = false;
                         pinchStartDist = 0;
+                        // Remove live transform before re-rendering at final zoom
+                        const canvasContainer = document.getElementById('pdfCanvasContainer');
+                        if (canvasContainer) {
+                            canvasContainer.style.transform = '';
+                        }
+                        // Re-render at exact zoom (no step snapping — free zoom)
+                        applyZoom(Math.min(3.0, Math.max(0.5, pdfZoom)));
                     }
                 });
 
