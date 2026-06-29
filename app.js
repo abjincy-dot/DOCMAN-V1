@@ -1314,11 +1314,23 @@ function openPdfViewer(fileData, fileName) {
                 const zoomOut = document.getElementById('pdfZoomOut');
 
                 function applyZoom(newZoom) {
+                    const vb = document.getElementById('pdfViewerBody');
+                    const oldZoom = pdfZoom;
+                    // Save scroll ratio (position relative to total scrollable height)
+                    const scrollRatio = vb ? (vb.scrollTop / Math.max(1, vb.scrollHeight - vb.clientHeight)) : 0;
                     pdfZoom = newZoom;
                     updateZoomLabel();
                     const c = document.getElementById('pdfCanvasContainer');
                     if (c) c.innerHTML = '';
                     renderAllPagesForDoc(pdfDocRef, baseViewerWidth);
+                    // Restore scroll position after layout settles
+                    if (vb) {
+                        requestAnimationFrame(function() {
+                            requestAnimationFrame(function() {
+                                vb.scrollTop = scrollRatio * (vb.scrollHeight - vb.clientHeight);
+                            });
+                        });
+                    }
                 }
 
                 if (zoomIn) zoomIn.addEventListener('click', function() {
