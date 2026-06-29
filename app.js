@@ -1206,6 +1206,7 @@ function openPdfViewer(fileData, fileName) {
     const ZOOM_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
     let pdfDocRef = null;
     let baseViewerWidth = 0;
+    let lastPageHeight = 0; // tracks rendered page height for accurate placeholder sizing
 
     function updateZoomLabel() {
         const lbl = document.getElementById('pdfZoomLabel');
@@ -1231,7 +1232,9 @@ function openPdfViewer(fileData, fileName) {
             const placeholder = document.createElement('div');
             placeholder.dataset.page = i;
             placeholder.dataset.rendered = 'false';
-            placeholder.style.cssText = `width:${scaledWidth}px;min-height:200px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;`;
+            // Use known page height scaled to current zoom for accurate scrollHeight
+            const estHeight = lastPageHeight > 0 ? Math.round(lastPageHeight * pdfZoom) : 200;
+            placeholder.style.cssText = `width:${scaledWidth}px;height:${estHeight}px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;`;
             placeholder.textContent = 'Page ' + i;
             container.appendChild(placeholder);
             placeholders.push(placeholder);
@@ -1253,6 +1256,9 @@ function openPdfViewer(fileData, fileName) {
                 canvas.width = scaledViewport.width;
                 canvas.height = scaledViewport.height;
                 canvas.style.cssText = `display:block;width:${scaledWidth}px;height:${displayHeight}px;max-width:none;border-radius:4px;touch-action:pan-x pan-y;`;
+                // Record base page height (at zoom=1) for accurate placeholder sizing
+                if (lastPageHeight === 0) lastPageHeight = displayHeight / pdfZoom;
+                placeholder.style.height = displayHeight + 'px';
                 placeholder.style.minHeight = '';
                 placeholder.style.alignItems = '';
                 placeholder.style.justifyContent = '';
@@ -1316,18 +1322,21 @@ function openPdfViewer(fileData, fileName) {
                 function applyZoom(newZoom) {
                     const vb = document.getElementById('pdfViewerBody');
                     const oldZoom = pdfZoom;
-                    // Save scroll ratio (position relative to total scrollable height)
-                    const scrollRatio = vb ? (vb.scrollTop / Math.max(1, vb.scrollHeight - vb.clientHeight)) : 0;
+                    // Anchor: the pixel at the vertical center of the viewport
+                    // scrollTop + half clientHeight = absolute position of center pixel
+                    // After zoom, that same content pixel should stay at center
+                    const centerBefore = vb ? (vb.scrollTop + vb.clientHeight / 2) : 0;
+                    const zoomRatio = newZoom / oldZoom;
                     pdfZoom = newZoom;
                     updateZoomLabel();
                     const c = document.getElementById('pdfCanvasContainer');
                     if (c) c.innerHTML = '';
                     renderAllPagesForDoc(pdfDocRef, baseViewerWidth);
-                    // Restore scroll position after layout settles
+                    // After re-render, restore so the same content stays centered
                     if (vb) {
                         requestAnimationFrame(function() {
                             requestAnimationFrame(function() {
-                                vb.scrollTop = scrollRatio * (vb.scrollHeight - vb.clientHeight);
+                                vb.scrollTop = centerBefore * zoomRatio - vb.clientHeight / 2;
                             });
                         });
                     }
