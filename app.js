@@ -1339,33 +1339,56 @@ function openPdfViewer(fileData, fileName) {
                     // to the canvas container at the OLD zoom level) that should stay
                     // under the same SCREEN position after re-rendering.
                     // Default anchor: viewport center (used by +/- buttons).
-                    let contentX, contentY, screenX, screenY;
-                    if (anchor) {
-                        contentX = anchor.contentX;
-                        contentY = anchor.contentY;
-                        screenX = anchor.screenX;
-                        screenY = anchor.screenY;
-                    } else if (vb) {
-                        screenX = vb.clientWidth / 2;
-                        screenY = vb.clientHeight / 2;
-                        contentX = vb.scrollLeft + screenX;
-                        contentY = vb.scrollTop + screenY;
-                    }
+                    
+                    let ratioX, ratioY, screenX, screenY;
 
-                    pdfZoom = newZoom;
+if (anchor) {
+    ratioX = anchor.ratioX;
+    ratioY = anchor.ratioY;
+    screenX = anchor.screenX;
+    screenY = anchor.screenY;
+}
+                    
+else if (vb) {
+
+    screenX = vb.clientWidth / 2;
+    screenY = vb.clientHeight / 2;
+
+    const container = document.getElementById('pdfCanvasContainer');
+
+    ratioX =
+        (vb.scrollLeft + screenX) / container.scrollWidth;
+
+    ratioY =
+        (vb.scrollTop + screenY) / container.scrollHeight;
+}                 
+
+pdfZoom = newZoom;
                     updateZoomLabel();
                     const c = document.getElementById('pdfCanvasContainer');
                     if (c) c.innerHTML = '';
                     renderAllPagesForDoc(pdfDocRef, baseViewerWidth);
 
-                    if (vb && contentX !== undefined) {
-                        requestAnimationFrame(function() {
-                            requestAnimationFrame(function() {
-                                vb.scrollLeft = contentX * zoomRatio - screenX;
-                                vb.scrollTop = contentY * zoomRatio - screenY;
-                            });
-                        });
-                    }
+                    if (vb && ratioX !== undefined) {
+
+    requestAnimationFrame(function () {
+
+        requestAnimationFrame(function () {
+
+            const container =
+                document.getElementById('pdfCanvasContainer');
+
+            vb.scrollLeft =
+                ratioX * container.scrollWidth - screenX;
+
+            vb.scrollTop =
+                ratioY * container.scrollHeight - screenY;
+
+        });
+
+    });
+
+}
                 }
 
                 if (zoomIn) zoomIn.addEventListener('click', function() {
