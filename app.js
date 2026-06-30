@@ -1203,7 +1203,7 @@ function openPdfViewer(fileData, fileName) {
 
     // ---- Zoom state ----
     let pdfZoom = 1.0;
-    const ZOOM_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
+    const ZOOM_STEPS = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
     let pdfDocRef = null;
     let baseViewerWidth = 0;
     let lastPageHeight = 0; // tracks rendered page height for accurate placeholder sizing
@@ -1389,21 +1389,7 @@ pdfZoom = newZoom;
     });
 
 }
-                }
-
-                if (zoomIn) zoomIn.addEventListener('click', function() {
-                    const idx = ZOOM_STEPS.indexOf(pdfZoom);
-                    const next = idx === -1 ? ZOOM_STEPS.findIndex(s => s > pdfZoom) : idx + 1;
-                    if (next >= 0 && next < ZOOM_STEPS.length) applyZoom(ZOOM_STEPS[next]);
-                });
-
-                if (zoomOut) zoomOut.addEventListener('click', function() {
-                    const idx = ZOOM_STEPS.indexOf(pdfZoom);
-                    const prev = idx === -1 ? ZOOM_STEPS.slice().reverse().findIndex(s => s < pdfZoom) : idx - 1;
-                    if (prev >= 0) applyZoom(ZOOM_STEPS[prev]);
-                });
-
-                // Pinch-to-zoom on touch
+                }// Pinch-to-zoom on touch
                 let pinchStartDist = 0;
                 let pinchStartZoom = 1;
                 let isPinching = false;
