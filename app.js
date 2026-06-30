@@ -1182,7 +1182,7 @@ function openPdfViewer(fileData, fileName) {
             </div>
         </div>
         <div id="pdfViewerBody" style="flex:1;overflow-y:auto;overflow-x:auto;background:#2a2a2a;padding:12px 8px;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;">
-            <div id="pdfCanvasContainer" style="display:flex;flex-direction:column;align-items:center;gap:8px;"></div>
+            <div id="pdfCanvasContainer" style="display:flex;flex-direction:column;align-items:center;gap:8px;margin:0 auto;"></div>
             <div id="pdfLoadingMsg" style="color:#94a3b8;text-align:center;padding:40px 0;font-family:Inter,sans-serif;font-size:0.9rem;">Loading PDF…</div>
         </div>
     `;
@@ -1226,6 +1226,17 @@ function openPdfViewer(fileData, fileName) {
         if (!container) return;
         const totalPages = pdfDoc.numPages;
         const scaledWidth = Math.round(baseWidth * pdfZoom);
+
+        // IMPORTANT: give the container an explicit width matching the rendered
+        // page width. Previously the container had no width set, so it stretched
+        // to 100% of the viewer body and used align-items:center to center the
+        // (often wider) page canvases. When zoomed content overflowed to the LEFT
+        // of that centered box, it became permanently unreachable: scrollLeft can
+        // never go negative, so that overflow was clipped with no way to scroll to
+        // it. Setting the container's own width to the content width (and centering
+        // the container itself via margin:auto) makes scrollLeft 0 correspond to
+        // the actual left edge of the page, so nothing is ever clipped/unreachable.
+        container.style.width = scaledWidth + 'px';
 
         const placeholders = [];
         for (let i = 1; i <= totalPages; i++) {
@@ -1319,24 +1330,39 @@ function openPdfViewer(fileData, fileName) {
                 const zoomIn = document.getElementById('pdfZoomIn');
                 const zoomOut = document.getElementById('pdfZoomOut');
 
-                function applyZoom(newZoom) {
+                function applyZoom(newZoom, anchor) {
                     const vb = document.getElementById('pdfViewerBody');
                     const oldZoom = pdfZoom;
-                    // Anchor: the pixel at the vertical center of the viewport
-                    // scrollTop + half clientHeight = absolute position of center pixel
-                    // After zoom, that same content pixel should stay at center
-                    const centerBefore = vb ? (vb.scrollTop + vb.clientHeight / 2) : 0;
                     const zoomRatio = newZoom / oldZoom;
+
+                    // Determine the anchor: a point in CONTENT space (i.e. relative
+                    // to the canvas container at the OLD zoom level) that should stay
+                    // under the same SCREEN position after re-rendering.
+                    // Default anchor: viewport center (used by +/- buttons).
+                    let contentX, contentY, screenX, screenY;
+                    if (anchor) {
+                        contentX = anchor.contentX;
+                        contentY = anchor.contentY;
+                        screenX = anchor.screenX;
+                        screenY = anchor.screenY;
+                    } else if (vb) {
+                        screenX = vb.clientWidth / 2;
+                        screenY = vb.clientHeight / 2;
+                        contentX = vb.scrollLeft + screenX;
+                        contentY = vb.scrollTop + screenY;
+                    }
+
                     pdfZoom = newZoom;
                     updateZoomLabel();
                     const c = document.getElementById('pdfCanvasContainer');
                     if (c) c.innerHTML = '';
                     renderAllPagesForDoc(pdfDocRef, baseViewerWidth);
-                    // After re-render, restore so the same content stays centered
-                    if (vb) {
+
+                    if (vb && contentX !== undefined) {
                         requestAnimationFrame(function() {
                             requestAnimationFrame(function() {
-                                vb.scrollTop = centerBefore * zoomRatio - vb.clientHeight / 2;
+                                vb.scrollLeft = contentX * zoomRatio - screenX;
+                                vb.scrollTop = contentY * zoomRatio - screenY;
                             });
                         });
                     }
@@ -1358,8 +1384,14 @@ function openPdfViewer(fileData, fileName) {
                 let pinchStartDist = 0;
                 let pinchStartZoom = 1;
                 let isPinching = false;
-                let pinchOriginX = '50%';
-                let pinchOriginY = '50%';
+                // Anchor point, captured at pinch start, in CONTENT space (i.e.
+                // relative to the canvas container's scrolled content at the zoom
+                // level when the pinch began) plus the SCREEN position (relative to
+                // pdfViewerBody's viewport) it must stay under throughout the pinch
+                // and after the final re-render.
+                let anchorContentX = 0, anchorContentY = 0;
+                let anchorScreenX = 0, anchorScreenY = 0;
+
                 viewerBody.addEventListener('touchstart', function(e) {
                     if (e.touches.length === 2) {
                         pinchStartDist = Math.hypot(
@@ -1368,15 +1400,15 @@ function openPdfViewer(fileData, fileName) {
                         );
                         pinchStartZoom = pdfZoom;
                         isPinching = true;
-                        // Compute pinch midpoint relative to the canvas container
-                        const canvasContainer = document.getElementById('pdfCanvasContainer');
-                        if (canvasContainer) {
-                            const rect = canvasContainer.getBoundingClientRect();
-                            const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-                            const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-                            pinchOriginX = (midX - rect.left) + 'px';
-                            pinchOriginY = (midY - rect.top) + 'px';
-                        }
+
+                        const vbRect = viewerBody.getBoundingClientRect();
+                        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                        anchorScreenX = midX - vbRect.left;
+                        anchorScreenY = midY - vbRect.top;
+                        anchorContentX = viewerBody.scrollLeft + anchorScreenX;
+                        anchorContentY = viewerBody.scrollTop + anchorScreenY;
+
                         e.preventDefault();
                     }
                 }, { passive: false });
@@ -1390,15 +1422,33 @@ function openPdfViewer(fileData, fileName) {
                         const ratio = dist / pinchStartDist;
                         const raw = pinchStartZoom * ratio;
                         const clamped = Math.min(3.0, Math.max(0.5, raw));
-                        // Live CSS scale anchored at pinch midpoint — no re-render
+                        pdfZoom = clamped;
+                        updateZoomLabel();
+
+                        // Live CSS scale anchored at the captured content point.
+                        // transform-origin is given in px relative to the container's
+                        // own (unscaled) box, expressed at the zoom level the pinch
+                        // started at, so the anchored point stays visually fixed
+                        // under the fingers while only the rest of the page scales
+                        // around it (no re-render needed mid-gesture).
                         const liveScale = clamped / pinchStartZoom;
                         const canvasContainer = document.getElementById('pdfCanvasContainer');
                         if (canvasContainer) {
-                            canvasContainer.style.transformOrigin = `${pinchOriginX} ${pinchOriginY}`;
+                            const originX = anchorContentX - canvasContainer.offsetLeft;
+                            const originY = anchorContentY - canvasContainer.offsetTop;
+                            canvasContainer.style.transformOrigin = `${originX}px ${originY}px`;
                             canvasContainer.style.transform = `scale(${liveScale})`;
                         }
-                        pdfZoom = clamped;
-                        updateZoomLabel();
+
+                        // Keep the anchor point under the fingers as they move, and
+                        // keep the viewport scrolled so nothing the user zoomed into
+                        // is pushed into unreachable negative-scroll space.
+                        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                        const vbRect = viewerBody.getBoundingClientRect();
+                        anchorScreenX = midX - vbRect.left;
+                        anchorScreenY = midY - vbRect.top;
+
                         e.preventDefault();
                     }
                 }, { passive: false });
@@ -1413,8 +1463,15 @@ function openPdfViewer(fileData, fileName) {
                             canvasContainer.style.transform = '';
                             canvasContainer.style.transformOrigin = '';
                         }
-                        // Re-render at exact zoom (no step snapping — free zoom)
-                        applyZoom(Math.min(3.0, Math.max(0.5, pdfZoom)));
+                        // Re-render at exact zoom (no step snapping — free zoom),
+                        // restoring scroll so the exact spot the user pinched on
+                        // stays under the exact spot on screen they last pinched at.
+                        applyZoom(Math.min(3.0, Math.max(0.5, pdfZoom)), {
+                            contentX: anchorContentX,
+                            contentY: anchorContentY,
+                            screenX: anchorScreenX,
+                            screenY: anchorScreenY
+                        });
                     }
                 });
 
