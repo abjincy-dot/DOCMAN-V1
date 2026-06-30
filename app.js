@@ -1389,7 +1389,21 @@ pdfZoom = newZoom;
     });
 
 }
-                }// Pinch-to-zoom on touch
+                }
+
+                if (zoomIn) zoomIn.addEventListener('click', function() {
+                    const idx = ZOOM_STEPS.indexOf(pdfZoom);
+                    const next = idx === -1 ? ZOOM_STEPS.findIndex(s => s > pdfZoom) : idx + 1;
+                    if (next >= 0 && next < ZOOM_STEPS.length) applyZoom(ZOOM_STEPS[next]);
+                });
+
+                if (zoomOut) zoomOut.addEventListener('click', function() {
+                    const idx = ZOOM_STEPS.indexOf(pdfZoom);
+                    const prev = idx === -1 ? ZOOM_STEPS.slice().reverse().findIndex(s => s < pdfZoom) : idx - 1;
+                    if (prev >= 0) applyZoom(ZOOM_STEPS[prev]);
+                });
+
+                // Pinch-to-zoom on touch
                 let pinchStartDist = 0;
                 let pinchStartZoom = 1;
                 let isPinching = false;
