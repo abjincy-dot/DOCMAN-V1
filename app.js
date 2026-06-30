@@ -1389,9 +1389,9 @@ function openPdfViewer(fileData, fileName) {
                 // level when the pinch began) plus the SCREEN position (relative to
                 // pdfViewerBody's viewport) it must stay under throughout the pinch
                 // and after the final re-render.
-                let anchorContentX = 0, anchorContentY = 0;
-                let anchorScreenX = 0, anchorScreenY = 0;
-
+                
+let anchorRatioX = 0, anchorRatioY = 0;
+let anchorScreenX = 0, anchorScreenY = 0;
                 viewerBody.addEventListener('touchstart', function(e) {
                     if (e.touches.length === 2) {
                         pinchStartDist = Math.hypot(
@@ -1406,8 +1406,15 @@ function openPdfViewer(fileData, fileName) {
                         const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
                         anchorScreenX = midX - vbRect.left;
                         anchorScreenY = midY - vbRect.top;
-                        anchorContentX = viewerBody.scrollLeft + anchorScreenX;
-                        anchorContentY = viewerBody.scrollTop + anchorScreenY;
+ const canvasContainer = document.getElementById('pdfCanvasContainer');
+
+anchorRatioX =
+    (viewerBody.scrollLeft + anchorScreenX) /
+    canvasContainer.scrollWidth;
+
+anchorRatioY =
+    (viewerBody.scrollTop + anchorScreenY) /
+    canvasContainer.scrollHeight;
 
                         e.preventDefault();
                     }
@@ -1434,8 +1441,8 @@ function openPdfViewer(fileData, fileName) {
                         const liveScale = clamped / pinchStartZoom;
                         const canvasContainer = document.getElementById('pdfCanvasContainer');
                         if (canvasContainer) {
-                            const originX = anchorContentX - canvasContainer.offsetLeft;
-                            const originY = anchorContentY - canvasContainer.offsetTop;
+                            const originX = anchorRatioX * canvasContainer.scrollWidth;
+const originY = anchorRatioY * canvasContainer.scrollHeight;
                             canvasContainer.style.transformOrigin = `${originX}px ${originY}px`;
                             canvasContainer.style.transform = `scale(${liveScale})`;
                         }
@@ -1466,12 +1473,12 @@ function openPdfViewer(fileData, fileName) {
                         // Re-render at exact zoom (no step snapping — free zoom),
                         // restoring scroll so the exact spot the user pinched on
                         // stays under the exact spot on screen they last pinched at.
-                        applyZoom(Math.min(3.0, Math.max(0.5, pdfZoom)), {
-                            contentX: anchorContentX,
-                            contentY: anchorContentY,
-                            screenX: anchorScreenX,
-                            screenY: anchorScreenY
-                        });
+applyZoom(Math.min(3.0, Math.max(0.5, pdfZoom)), {
+    ratioX: anchorRatioX,
+    ratioY: anchorRatioY,
+    screenX: anchorScreenX,
+    screenY: anchorScreenY
+});
                     }
                 });
 
