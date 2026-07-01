@@ -1370,10 +1370,8 @@ anchorRatioY =
                         );
                         const ratio = dist / pinchStartDist;
                         const raw = pinchStartZoom * ratio;
-                        const clamped = Math.min(3.0, Math.max(1.0, raw));
-                        pdfZoom = clamped;
-                        updateZoomLabel();
-
+                       pdfZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, raw));
+updateZoomLabel();
                         // Live CSS scale anchored at the captured content point.
                         // transform-origin is given in px relative to the container's
                         // own (unscaled) box, expressed at the zoom level the pinch
@@ -1409,13 +1407,13 @@ const originY = anchorRatioY * canvasContainer.scrollHeight;
                         // Remove live transform before re-rendering at final zoom
                         const canvasContainer = document.getElementById('pdfCanvasContainer');
                         if (canvasContainer) {
-                            canvasContainer.style.transform = '';
-                            canvasContainer.style.transformOrigin = '';
+                        canvasContainer.style.transform = 'scale(1)';
+canvasContainer.style.transformOrigin = 'top left';
                         }
                         // Re-render at exact zoom (no step snapping — free zoom),
                         // restoring scroll so the exact spot the user pinched on
                         // stays under the exact spot on screen they last pinched at.
-applyZoom(Math.min(3.0, Math.max(1.0, pdfZoom)), {
+applyZoom(pdfZoom, {
     ratioX: anchorRatioX,
     ratioY: anchorRatioY,
     screenX: anchorScreenX,
