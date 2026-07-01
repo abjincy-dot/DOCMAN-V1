@@ -1280,8 +1280,9 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName, forceRetry) {
             // the pdf-viewer-header above, so EmbedPDF's own Open/Close items are
             // redundant (its "Open" drops into EmbedPDF's own upload/empty-state
             // screen, bypassing DOCMAN's file management). Print, Security,
-            // Screenshot, Export, Fullscreen are kept.
-            disabledCategories: ['document-open', 'document-close']
+            // Screenshot, Export, Fullscreen are kept. Zoom is also disabled
+            // since DOCMAN's own header already has zoom in/out/fit-width/fit-page.
+            disabledCategories: ['document-open', 'document-close', 'zoom']
         });
         viewerEl._embedPdfInstance = instance;
 
