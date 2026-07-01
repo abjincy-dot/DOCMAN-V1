@@ -1275,7 +1275,13 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName, forceRetry) {
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
             documentManager: {
                 initialDocuments: [{ url: pdfUrl, documentId: docId, name: fileName }]
-            }
+            },
+            // DOCMAN already has its own Close button + file open/close flow in
+            // the pdf-viewer-header above, so EmbedPDF's own Open/Close items are
+            // redundant (its "Open" drops into EmbedPDF's own upload/empty-state
+            // screen, bypassing DOCMAN's file management). Print, Security,
+            // Screenshot, Export, Fullscreen are kept.
+            disabledCategories: ['document-open', 'document-close']
         });
         viewerEl._embedPdfInstance = instance;
 
