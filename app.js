@@ -1208,14 +1208,48 @@ const MAX_ZOOM = 3.0;
     // Manual zoom controls removed.
     // Keep this function to avoid breaking existing calls.
 }
-    function rerenderAllPages() {
-        const container = document.getElementById('pdfCanvasContainer');
-        const viewerBody = document.getElementById('pdfViewerBody');
-        if (!container || !viewerBody || !pdfDocRef) return;
-        container.innerHTML = '';
-        renderAllPagesForDoc(pdfDocRef, baseViewerWidth);
-    }
 
+function applyZoom(newZoom, anchor = null) {
+
+    pdfZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
+
+    const viewerBody = document.getElementById('pdfViewerBody');
+    const container = document.getElementById('pdfCanvasContainer');
+
+    if (!viewerBody || !container || !pdfDocRef) return;
+
+    const oldLeft = viewerBody.scrollLeft;
+    const oldTop = viewerBody.scrollTop;
+
+    container.innerHTML = '';
+
+    requestAnimationFrame(() => {
+
+        renderAllPagesForDoc(pdfDocRef, baseViewerWidth);
+
+        requestAnimationFrame(() => {
+
+            if (anchor) {
+
+                viewerBody.scrollLeft =
+                    (container.scrollWidth * anchor.ratioX) - anchor.screenX;
+
+                viewerBody.scrollTop =
+                    (container.scrollHeight * anchor.ratioY) - anchor.screenY;
+
+            } else {
+
+                viewerBody.scrollLeft = oldLeft;
+                viewerBody.scrollTop = oldTop;
+
+            }
+
+        });
+
+    });
+
+}
+    
     function renderAllPagesForDoc(pdfDoc, baseWidth) {
         const container = document.getElementById('pdfCanvasContainer');
         if (!container) return;
