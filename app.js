@@ -1198,16 +1198,16 @@ function openPdfViewer(fileData, fileName) {
 
     // ---- Zoom state ----
     let pdfZoom = 1.0;
-    const ZOOM_STEPS = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
+    const MIN_ZOOM = 1.0;
+const MAX_ZOOM = 3.0;
     let pdfDocRef = null;
     let baseViewerWidth = 0;
     let lastPageHeight = 0; // tracks rendered page height for accurate placeholder sizing
 
-    function updateZoomLabel() {
-        const lbl = document.getElementById('pdfZoomLabel');
-        if (lbl) lbl.textContent = Math.round(pdfZoom * 100) + '%';
-    }
-
+ function updateZoomLabel() {
+    // Manual zoom controls removed.
+    // Keep this function to avoid breaking existing calls.
+}
     function rerenderAllPages() {
         const container = document.getElementById('pdfCanvasContainer');
         const viewerBody = document.getElementById('pdfViewerBody');
