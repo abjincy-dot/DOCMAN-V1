@@ -1199,65 +1199,135 @@ function openPdfViewer(fileData, fileName) {
     // ---- Zoom state ----
     let pdfZoom = 1.0;
     const MIN_ZOOM = 1.0;
-const MAX_ZOOM = 6.0;
+    const MAX_ZOOM = 6.0;
     let pdfDocRef = null;
-
-// Adobe Engine V2
-const pageCache = new Map();
-let renderGeneration = 0;
-let rendering = false;
     let baseViewerWidth = 0;
     let lastPageHeight = 0; // tracks rendered page height for accurate placeholder sizing
 
- function updateZoomLabel() {
-    // Manual zoom controls removed.
-    // Keep this function to avoid breaking existing calls.
-}
+    // renderedZoom = the zoom level actually baked into the on-screen canvas
+    // PIXELS right now. It can lag behind pdfZoom right after a zoom change,
+    // until the background crisp re-render (below) catches up. This is the
+    // key to feeling like a native PDF engine: we never block any visual
+    // update on pdf.js finishing a render.
+    let renderedZoom = 1.0;
+    let crispRenderToken = 0;
+    let crispRenderTimer = null;
 
-function applyZoom(newZoom, anchor = null, onDone = null) {
+    function updateZoomLabel() {
+        // Manual zoom controls removed.
+        // Keep this function to avoid breaking existing calls.
+    }
 
-    pdfZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
+    // STAGE A -- instant, synchronous, involves zero PDF rendering. Takes
+    // whatever pixels are already on screen (already visually correct,
+    // since the live pinch preview stretched them via CSS transform) and
+    // bakes that same stretch into each element's real width/height, then
+    // drops the transform. Because this never waits on pdf.js, it can never
+    // stall -- it's exactly as fast as a native pinch-zoom viewer, no matter
+    // how large or complex the underlying drawing is.
+    function bakeVisualZoom(newZoom, anchor) {
+        pdfZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
 
-    const viewerBody = document.getElementById('pdfViewerBody');
-    const container = document.getElementById('pdfCanvasContainer');
+        const viewerBody = document.getElementById('pdfViewerBody');
+        const container = document.getElementById('pdfCanvasContainer');
+        if (!viewerBody || !container) return;
 
-    if (!viewerBody || !container || !pdfDocRef) return;
+        const oldLeft = viewerBody.scrollLeft;
+        const oldTop = viewerBody.scrollTop;
+        const scaledWidth = Math.round(baseViewerWidth * pdfZoom);
 
-    const oldLeft = viewerBody.scrollLeft;
-    const oldTop = viewerBody.scrollTop;
+        container.style.transform = 'none';
+        container.style.transformOrigin = 'top left';
+        container.style.width = scaledWidth + 'px';
 
-    // Wait for the new page 1 canvas to actually finish rendering (via the
-    // onFirstPageReady callback) before touching scroll position. Using a
-    // blind requestAnimationFrame here (as before) fires before the async
-    // page render/paint is done, so the scroll fix used to land a frame or
-    // two before the content was actually ready -- part of the zoom jerk.
-    renderAllPagesForDoc(pdfDocRef, baseViewerWidth, () => {
-
-        requestAnimationFrame(() => {
-
-            if (anchor) {
-
-                viewerBody.scrollLeft =
-                    (container.scrollWidth * anchor.ratioX) - anchor.screenX;
-
-                viewerBody.scrollTop =
-                    (container.scrollHeight * anchor.ratioY) - anchor.screenY;
-
-            } else {
-
-                viewerBody.scrollLeft = oldLeft;
-                viewerBody.scrollTop = oldTop;
-
+        Array.from(container.children).forEach(function(el) {
+            const baseHeight = parseFloat(el.dataset.baseHeight || '0');
+            const newHeight = baseHeight > 0
+                ? Math.round(baseHeight * pdfZoom)
+                : Math.round((lastPageHeight || 200) * pdfZoom);
+            el.style.width = scaledWidth + 'px';
+            el.style.height = newHeight + 'px';
+            const canvas = el.querySelector('canvas');
+            if (canvas) {
+                canvas.style.width = scaledWidth + 'px';
+                canvas.style.height = newHeight + 'px';
             }
-
-            if (onDone) onDone();
-
         });
 
-    });
+        // One frame to let the new layout box exist, then fix scroll so the
+        // pinched point stays under the same screen position. No render
+        // dependency here at all, so this lands within a frame or two --
+        // never a multi-hundred-ms stall on a big drawing.
+        requestAnimationFrame(function() {
+            if (anchor) {
+                viewerBody.scrollLeft = (container.scrollWidth * anchor.ratioX) - anchor.screenX;
+                viewerBody.scrollTop = (container.scrollHeight * anchor.ratioY) - anchor.screenY;
+            } else {
+                viewerBody.scrollLeft = oldLeft;
+                viewerBody.scrollTop = oldTop;
+            }
+        });
+    }
 
-}
-    
+    // STAGE B -- background, debounced, cancellable. Re-rasterizes the
+    // pages that are already on screen at the new (sharp) resolution and
+    // swaps each canvas in-place once ready. Because bakeVisualZoom already
+    // set every element to its final on-screen size, the new crisp canvas
+    // is sized identically to what's already showing -- the swap causes
+    // zero layout shift, just a sharpness upgrade nobody notices happening.
+    function scheduleCrispRerender(zoom) {
+        crispRenderToken++;
+        const myToken = crispRenderToken;
+        clearTimeout(crispRenderTimer);
+        crispRenderTimer = setTimeout(function() {
+            if (myToken !== crispRenderToken || !pdfDocRef) return;
+            const container = document.getElementById('pdfCanvasContainer');
+            if (!container) return;
+            const scaledWidth = Math.round(baseViewerWidth * zoom);
+
+            // Only re-sharpen pages already rendered on screen -- pages the
+            // user hasn't scrolled to yet will render fresh, at the correct
+            // zoom, whenever they come into view via the normal lazy path.
+            const candidates = Array.from(container.children).filter(function(el) {
+                return el.dataset.rendered === 'true';
+            });
+
+            candidates.forEach(function(placeholder) {
+                const pageNum = parseInt(placeholder.dataset.page);
+                pdfDocRef.getPage(pageNum).then(function(page) {
+                    if (myToken !== crispRenderToken) return;
+                    const viewport = page.getViewport({ scale: 1 });
+                    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+                    const scale = scaledWidth / viewport.width;
+                    const scaledViewport = page.getViewport({ scale: scale * dpr });
+                    const displayHeight = viewport.height * scale;
+
+                    const newCanvas = document.createElement('canvas');
+                    newCanvas.width = scaledViewport.width;
+                    newCanvas.height = scaledViewport.height;
+                    newCanvas.style.cssText = `display:block;width:${scaledWidth}px;height:${displayHeight}px;max-width:none;border-radius:4px;touch-action:pan-x pan-y;`;
+
+                    const ctx = newCanvas.getContext('2d', { alpha: false });
+                    return page.render({
+                        canvasContext: ctx,
+                        viewport: scaledViewport,
+                        intent: 'display'
+                    }).promise.then(function() {
+                        if (myToken !== crispRenderToken) return;
+                        const oldCanvas = placeholder.querySelector('canvas');
+                        if (oldCanvas) placeholder.replaceChild(newCanvas, oldCanvas);
+                        else placeholder.appendChild(newCanvas);
+                        placeholder.style.width = scaledWidth + 'px';
+                        placeholder.style.height = displayHeight + 'px';
+                        placeholder.dataset.baseHeight = String(displayHeight / zoom);
+                    });
+                });
+            });
+
+            renderedZoom = zoom;
+        }, 220);
+    }
+
     function renderAllPagesForDoc(pdfDoc, baseWidth, onFirstPageReady) {
         const container = document.getElementById('pdfCanvasContainer');
         if (!container) return;
@@ -1308,6 +1378,7 @@ function applyZoom(newZoom, anchor = null, onDone = null) {
                 canvas.style.cssText = `display:block;width:${scaledWidth}px;height:${displayHeight}px;max-width:none;border-radius:4px;touch-action:pan-x pan-y;`;
                 // Record base page height (at zoom=1) for accurate placeholder sizing
                 if (lastPageHeight === 0) lastPageHeight = displayHeight / pdfZoom;
+                placeholder.dataset.baseHeight = String(displayHeight / pdfZoom);
                 placeholder.style.height = displayHeight + 'px';
                 placeholder.style.minHeight = '';
                 placeholder.style.alignItems = '';
@@ -1346,8 +1417,7 @@ function applyZoom(newZoom, anchor = null, onDone = null) {
 
         function swapInNewContent() {
             // Resize the container and swap old->new content in one go.
-            // See the big comment above applyZoom's old width-setting code:
-            // this must happen together with the content swap, not before,
+            // This must happen together with the content swap, not before,
             // or the old (still-old-size) canvases visibly jump when the
             // container's width changes underneath them.
             container.style.width = scaledWidth + 'px';
@@ -1384,6 +1454,7 @@ function applyZoom(newZoom, anchor = null, onDone = null) {
             pdfjsLib.getDocument(pdfUrl).promise.then(function(pdfDoc) {
                 if (loadingMsg) loadingMsg.style.display = 'none';
                 pdfDocRef = pdfDoc;
+                renderedZoom = pdfZoom;
                 renderAllPagesForDoc(pdfDoc, baseViewerWidth);
 
                 // Wire up zoom buttons
@@ -1469,27 +1540,18 @@ const originY = anchorRatioY * canvasContainer.scrollHeight;
                     if (isPinching && pinchStartDist > 0) {
                         isPinching = false;
                         pinchStartDist = 0;
-                        const canvasContainer = document.getElementById('pdfCanvasContainer');
-                        // Do NOT remove the live pinch transform here. Doing it
-                        // immediately snaps the view back to its pre-pinch size
-                        // before the re-render/rescroll below are ready, which is
-                        // the visible "jerk" on release. Instead, re-render at the
-                        // exact final zoom (no step snapping — free zoom) and only
-                        // remove the transform once the new content is drawn AND
-                        // the scroll position is corrected, in the same tick --
-                        // so the exact spot the user pinched on stays under their
-                        // fingers with a single, clean repaint instead of a snap.
-                        applyZoom(pdfZoom, {
+                        // Bake the current (already-correct-looking) pinch
+                        // preview into real element sizes instantly -- no PDF
+                        // rendering involved, so this can never stall, no
+                        // matter how big/complex the drawing is. A sharp
+                        // re-render then swaps in seamlessly in the background.
+                        bakeVisualZoom(pdfZoom, {
                             ratioX: anchorRatioX,
                             ratioY: anchorRatioY,
                             screenX: anchorScreenX,
                             screenY: anchorScreenY
-                        }, function() {
-                            if (canvasContainer) {
-                                canvasContainer.style.transform = 'scale(1)';
-                                canvasContainer.style.transformOrigin = 'top left';
-                            }
                         });
+                        scheduleCrispRerender(pdfZoom);
                     }
                 });
 
