@@ -1226,7 +1226,7 @@ function applyZoom(newZoom, anchor = null) {
     const oldLeft = viewerBody.scrollLeft;
     const oldTop = viewerBody.scrollTop;
 
-    container.innerHTML = '';
+   // container.innerHTML = '';
 
     requestAnimationFrame(() => {
 
