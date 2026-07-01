@@ -1199,7 +1199,7 @@ function openPdfViewer(fileData, fileName) {
     // ---- Zoom state ----
     let pdfZoom = 1.0;
     const MIN_ZOOM = 1.0;
-const MAX_ZOOM = 3.0;
+const MAX_ZOOM = 6.0;
     let pdfDocRef = null;
 
 // Adobe Engine V2
