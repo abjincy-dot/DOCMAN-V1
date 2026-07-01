@@ -1274,6 +1274,7 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName, forceRetry) {
             type: 'container',
             target: container,
             theme: { preference: 'dark' },
+            worker: false, // TEMP DEBUG: bypass the Worker/blob-worker path entirely
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
             documentManager: {
                 initialDocuments: [{ url: pdfUrl, documentId: docId, name: fileName }]
