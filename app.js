@@ -1412,7 +1412,7 @@ updateZoomLabel();
                         // started at, so the anchored point stays visually fixed
                         // under the fingers while only the rest of the page scales
                         // around it (no re-render needed mid-gesture).
-                        const liveScale = clamped / pinchStartZoom;
+                   const liveScale = pdfZoom / pinchStartZoom;
                         const canvasContainer = document.getElementById('pdfCanvasContainer');
                         if (canvasContainer) {
                             const originX = anchorRatioX * canvasContainer.scrollWidth;
