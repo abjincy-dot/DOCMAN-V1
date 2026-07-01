@@ -1171,7 +1171,7 @@ function openPdfViewer(fileData, fileName) {
     viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
 
     viewer.innerHTML = `
-        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:linear-gradient(135deg, #0a0e1f 0%, #12172e 100%);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;flex-shrink:0;z-index:2;min-height:52px;touch-action:manipulation;">
+        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:#212937;border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;flex-shrink:0;z-index:2;min-height:52px;touch-action:manipulation;">
             <button onclick="closePdfViewer()" ontouchstart="" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#ef4444;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;letter-spacing:0.02em;touch-action:manipulation;flex-shrink:0;">
                 Close
             </button>
