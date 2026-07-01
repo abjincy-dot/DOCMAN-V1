@@ -1201,6 +1201,11 @@ function openPdfViewer(fileData, fileName) {
     const MIN_ZOOM = 1.0;
 const MAX_ZOOM = 3.0;
     let pdfDocRef = null;
+
+// Adobe Engine V2
+const pageCache = new Map();
+let renderGeneration = 0;
+let rendering = false;
     let baseViewerWidth = 0;
     let lastPageHeight = 0; // tracks rendered page height for accurate placeholder sizing
 
