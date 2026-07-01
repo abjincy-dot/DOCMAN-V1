@@ -1,5 +1,5 @@
 const APP_VERSION = '1.0.2';
-const CACHE = 'docman-v120';
+const CACHE = 'docman-v121';
 // The PDF engine (EmbedPDF) is loaded from jsdelivr at runtime instead of
 // being vendored locally. It's not in the precache list below, but the
 // cache-first branch in the fetch handler caches it (and its wasm asset)
