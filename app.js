@@ -1272,7 +1272,13 @@ function applyZoom(newZoom, anchor = null) {
         // the actual left edge of the page, so nothing is ever clipped/unreachable.
         container.style.width = scaledWidth + 'px';
 
-        const placeholders = [];
+      const oldChildren = Array.from(container.children);
+
+// Don't clear immediately.
+// Keep the old pages visible until the new placeholders are ready.
+container.innerHTML = '';
+
+const placeholders = [];
         for (let i = 1; i <= totalPages; i++) {
             const placeholder = document.createElement('div');
             placeholder.dataset.page = i;
@@ -1298,6 +1304,12 @@ function applyZoom(newZoom, anchor = null) {
                 const displayHeight = viewport.height * scale;
 
                 const canvas = document.createElement('canvas');
+                canvas.style.willChange = 'transform';
+canvas.style.transform = 'translateZ(0)';
+canvas.style.backfaceVisibility = 'hidden';
+
+
+  
                 canvas.width = scaledViewport.width;
                 canvas.height = scaledViewport.height;
                 canvas.style.cssText = `display:block;width:${scaledWidth}px;height:${displayHeight}px;max-width:none;border-radius:4px;touch-action:pan-x pan-y;`;
@@ -1310,17 +1322,22 @@ function applyZoom(newZoom, anchor = null) {
                 placeholder.appendChild(canvas);
 
                 const ctx = canvas.getContext('2d', { alpha: false });
-                page.render({
-                    canvasContext: ctx,
-                    viewport: scaledViewport,
-                    intent: 'display'
-                });
+              page.render({
+    canvasContext: ctx,
+    viewport: scaledViewport,
+    intent: 'display'
+}).promise.then(() => {
+    canvas.style.willChange = 'auto';
+});
             });
         }
 
-        if (placeholders[0]) renderPageInto(placeholders[0], 1);
-        if (placeholders[1]) renderPageInto(placeholders[1], 2);
+     requestAnimationFrame(() => {
 
+    if (placeholders[0]) renderPageInto(placeholders[0], 1);
+    if (placeholders[1]) renderPageInto(placeholders[1], 2);
+
+});
         if ('IntersectionObserver' in window) {
             const observer = new IntersectionObserver(function(entries) {
                 entries.forEach(function(entry) {
