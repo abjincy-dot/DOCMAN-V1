@@ -1219,13 +1219,16 @@ function openPdfViewer(fileData, fileName) {
 // that needs to be hand-rolled here anymore.
 // ============================================================
 
-const EMBEDPDF_CDN = 'https://cdn.jsdelivr.net/npm/@embedpdf/snippet@2.14.4/dist/embedpdf.js';
+// Vendored locally in vendor/embedpdf/ (embedpdf.js + pdfium.wasm) so the PDF
+// viewer never depends on jsdelivr being up or reachable. See vendor/embedpdf/README.txt
+// for how these files were pulled from npm.
+const EMBEDPDF_LOCAL = './vendor/embedpdf/embedpdf.js';
 let embedPdfModulePromise = null;
 
 function loadEmbedPdfModule(forceRetry) {
     if (forceRetry) embedPdfModulePromise = null;
     if (!embedPdfModulePromise) {
-        const importPromise = import(/* webpackIgnore: true */ EMBEDPDF_CDN);
+        const importPromise = import(/* webpackIgnore: true */ EMBEDPDF_LOCAL);
         const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error('EmbedPDF load timed out')), 15000);
         });
@@ -1239,8 +1242,7 @@ function loadEmbedPdfModule(forceRetry) {
 }
 
 // Warm up the PDF engine in the background shortly after the app loads, so
-// it's already fetched (and cached by the service worker) before the user
-// actually taps a PDF. Greatly reduces the chance of hitting the CDN cold.
+// it's already parsed and ready before the user actually taps a PDF.
 (function preloadEmbedPdf() {
     const warm = () => { loadEmbedPdfModule().catch(() => {}); };
     if ('requestIdleCallback' in window) {
