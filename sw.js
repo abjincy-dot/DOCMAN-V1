@@ -1,5 +1,5 @@
 const APP_VERSION = '1.0.3';
-const CACHE = 'docman-v123';
+const CACHE = 'docman-v124';
 const ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.json', './Images/settings-tray.png', './Images/settings-neon.png', './vendor/jszip/jszip.min.js', './vendor/embedpdf/embedpdf.js', './vendor/embedpdf/embedpdf-7TNsu-EA.js', './vendor/embedpdf/browser-BKLM0ThC-CkSOgtCM.js', './vendor/embedpdf/direct-engine-BA2WfEti.js', './vendor/embedpdf/worker-engine-BkD2-rJn.js', './vendor/embedpdf/pdfium.wasm'];
 
 self.addEventListener('install', e => {
