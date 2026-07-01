@@ -1274,7 +1274,14 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName, forceRetry) {
             type: 'container',
             target: container,
             theme: { preference: 'dark' },
-            worker: false, // TEMP DEBUG: bypass the Worker/blob-worker path entirely
+            // EmbedPDF's built-in Stamp plugin defaults to fetching a manifest from
+            // cdn.jsdelivr.net on every init (part of its default-stamps feature).
+            // That's a hard `await` inside the plugin's initialize() with no timeout,
+            // so on a device with no/blocked internet it hangs forever and the whole
+            // plugin registry never finishes -> UI stuck on "Initializing plugins...".
+            // DOCMAN doesn't use EmbedPDF's rubber-stamp library, so kill the fetch
+            // entirely by clearing the manifest list.
+            stamp: { manifests: [] },
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
             documentManager: {
                 initialDocuments: [{ url: pdfUrl, documentId: docId, name: fileName }]
