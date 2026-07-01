@@ -3,7 +3,7 @@
 // Version: 1.0.0
 // ============================================================
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY = 'docman_recents_v1';
@@ -1222,20 +1222,46 @@ function openPdfViewer(fileData, fileName) {
 const EMBEDPDF_CDN = 'https://cdn.jsdelivr.net/npm/@embedpdf/snippet@2.14.4/dist/embedpdf.js';
 let embedPdfModulePromise = null;
 
-function loadEmbedPdfModule() {
+function loadEmbedPdfModule(forceRetry) {
+    if (forceRetry) embedPdfModulePromise = null;
     if (!embedPdfModulePromise) {
-        embedPdfModulePromise = import(/* webpackIgnore: true */ EMBEDPDF_CDN);
+        const importPromise = import(/* webpackIgnore: true */ EMBEDPDF_CDN);
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('EmbedPDF load timed out')), 15000);
+        });
+        embedPdfModulePromise = Promise.race([importPromise, timeoutPromise]).catch(err => {
+            // Don't cache a failed/timed-out attempt so the next open (or Retry tap) tries fresh.
+            embedPdfModulePromise = null;
+            throw err;
+        });
     }
     return embedPdfModulePromise;
 }
 
-function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
+// Warm up the PDF engine in the background shortly after the app loads, so
+// it's already fetched (and cached by the service worker) before the user
+// actually taps a PDF. Greatly reduces the chance of hitting the CDN cold.
+(function preloadEmbedPdf() {
+    const warm = () => { loadEmbedPdfModule().catch(() => {}); };
+    if ('requestIdleCallback' in window) {
+        requestIdleCallback(warm, { timeout: 5000 });
+    } else {
+        setTimeout(warm, 1500);
+    }
+})();
+
+function renderPdfWithEmbedPdf(pdfUrl, docId, fileName, forceRetry) {
     const container = document.getElementById('embedpdfContainer');
     const loadingMsg = document.getElementById('pdfLoadingMsg');
     const viewerEl = document.getElementById('pdfViewer');
     if (!container || !viewerEl) return;
 
-    loadEmbedPdfModule().then(function(mod) {
+    if (loadingMsg) {
+        loadingMsg.style.pointerEvents = 'none';
+        loadingMsg.textContent = 'Loading PDF…';
+    }
+
+    loadEmbedPdfModule(forceRetry).then(function(mod) {
         // Bail out silently if the viewer was closed while the module was loading.
         if (!document.body.contains(viewerEl)) return;
 
@@ -1284,7 +1310,16 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
         console.error('EmbedPDF failed to load', err);
         if (loadingMsg) {
             loadingMsg.style.pointerEvents = 'auto';
-            loadingMsg.textContent = 'Could not load the PDF engine. Check your internet connection and try again.';
+            loadingMsg.innerHTML = '<div style="text-align:center;padding:0 24px;">' +
+                'Could not load the PDF engine. Check your internet connection and try again.' +
+                '<br><button id="pdfEngineRetryBtn" style="margin-top:14px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;">Retry</button>' +
+                '</div>';
+            const retryBtn = document.getElementById('pdfEngineRetryBtn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', function() {
+                    renderPdfWithEmbedPdf(pdfUrl, docId, fileName, true);
+                });
+            }
         }
     });
 }
