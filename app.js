@@ -1288,6 +1288,20 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
     target: container,
     theme: { preference: 'dark' },
 
+            // EmbedPDF's PDFium worker itself runs from a blob: URL (it's
+            // spawned via `new Worker(URL.createObjectURL(new Blob([...])))`
+            // internally). It defaults wasmUrl to the *relative* string
+            // "./pdfium.wasm" and fetch()es it from inside that worker.
+            // A relative path resolved against a blob: base doesn't point
+            // anywhere real, and on Android WebView that fetch doesn't
+            // reject cleanly -- it just hangs forever, which is the actual
+            // cause of the "Loading document..." freeze (this is one layer
+            // below the document-buffer fix above: even with the PDF bytes
+            // handed over correctly, the engine itself never finishes
+            // starting up). Passing an absolute URL means the worker's
+            // fetch() doesn't depend on its own blob: location at all.
+            wasmUrl: new URL('./vendor/embedpdf/pdfium.wasm', document.baseURI).href,
+
             
             // EmbedPDF's built-in Stamp plugin defaults to fetching a manifest from
             // cdn.jsdelivr.net on every init (part of its default-stamps feature).
