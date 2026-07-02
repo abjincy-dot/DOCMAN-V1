@@ -9,6 +9,13 @@ const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY = 'docman_recents_v1';
 const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
 const PIN_KEY = 'docman_pin_v2';
+// Set right before handing a file to the internal EmbedPDF viewer, cleared
+// as soon as that open resolves (success or clean failure). A stale value
+// found on the NEXT app load means the engine crashed the whole page mid-open
+// last time -- see the crash-recovery check in handlePdfFile(). Deliberately
+// NOT namespaced under SETTINGS_KEY: it must survive independent of settings
+// and be trivial to JSON.parse defensively.
+const PDF_CRASH_FLAG_KEY = 'docman_pdf_open_pending_v1';
 
 // ============================================================
 // UTILITY FUNCTIONS
@@ -991,7 +998,51 @@ let isSharing = false;
 let shareTimeout = null;
 
 async function handlePdfFile(fileData, fileName) {
-    const openMode = docmanSettings.pdfOpen || 'external';
+    let openMode = docmanSettings.pdfOpen || 'external';
+
+    // ------------------------------------------------------------------
+    // CRASH RECOVERY: the internal EmbedPDF/PDFium engine can hard-crash
+    // the renderer (blank white page, whole app/tab restarts) on PDFs
+    // whose *content* (high-res images, complex vectors, bad fonts) blows
+    // its WASM memory budget -- this isn't correlated with file size, so
+    // no size threshold fully prevents it, and because it's a process
+    // crash, no JS here can catch it in the moment (the watchdog below
+    // only catches HANGS, not crashes -- a crash kills the JS context
+    // before any timer/catch can run).
+    //
+    // What we CAN do: mark "about to open internally" right before we
+    // hand off, and clear that mark as soon as we know the document
+    // opened successfully (or failed cleanly). If DOCMAN reloads and
+    // finds a stale mark left over from last time, that means the last
+    // internal open never got a chance to clear it -- i.e. it crashed.
+    // Auto-fall back to External so the user isn't stuck crash-looping
+    // on the same file, and tell them why.
+    // ------------------------------------------------------------------
+    if (openMode === 'docman') {
+        try {
+            const pending = JSON.parse(localStorage.getItem(PDF_CRASH_FLAG_KEY) || 'null');
+            if (pending) {
+                docmanSettings.pdfOpen = 'external';
+                openMode = 'external';
+                saveSettings();
+                localStorage.removeItem(PDF_CRASH_FLAG_KEY);
+                showToast('Built-in PDF viewer crashed last time opening "' + pending.fileName + '". Switched to External for safety -- you can change this back in Settings.', true);
+            }
+        } catch (e) { /* ignore malformed flag */ }
+    }
+
+    // Large PDF Threshold (Settings > Large PDF Threshold): PDFs at or above
+    // this size always use the external app, regardless of the "Open PDFs
+    // in" mode, since bigger files are more likely to trip the internal
+    // engine's memory limits. Below-threshold files can still crash the
+    // internal engine depending on content -- see crash-recovery above --
+    // but this catches the common "it's just a big file" case up front.
+    const thresholdBytes = (docmanSettings.pdfThreshold || 20) * 1024 * 1024;
+    if (openMode === 'docman' && fileData.size >= thresholdBytes) {
+        showToast('PDF is over the ' + (docmanSettings.pdfThreshold || 20) + ' MB threshold -- opening externally.');
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
 
     // Samsung Internet blocks Web Share API with files on github.io (NotAllowedError).
     // Force built-in viewer on Samsung Internet regardless of the external setting.
@@ -1233,6 +1284,14 @@ function openPdfViewer(fileData, fileName) {
     viewer._fileName = fileName;
     viewer._fileData = fileData;
 
+    // Arm the crash-recovery flag (see PDF_CRASH_FLAG_KEY declaration).
+    // Cleared in renderPdfWithEmbedPdf() once the document opens or fails
+    // cleanly, and in closePdfViewer(). If the engine hard-crashes the page
+    // instead, this write is the only trace left behind for next launch to find.
+    try {
+        localStorage.setItem(PDF_CRASH_FLAG_KEY, JSON.stringify({ fileName: fileName, time: Date.now() }));
+    } catch (e) { /* storage unavailable -- crash recovery just won't trigger */ }
+
     const escHandler = function(e) {
         if (e.key === 'Escape') {
             closePdfViewer();
@@ -1322,6 +1381,7 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
 
     function showStuckUI(stageAtTimeout) {
         if (settled) return;
+        clearPdfCrashFlag(); // it hung, not crashed -- don't treat as a crash next launch
         if (!document.body.contains(viewerEl)) return;
         const msgEl = document.getElementById('pdfLoadingMsg') || loadingMsg;
         const host = msgEl && document.body.contains(msgEl) ? msgEl : container;
@@ -1451,6 +1511,7 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
                     settled = true;
                     clearWatchdog();
                     setStage('document open');
+                    clearPdfCrashFlag();
                 } else {
                     if (docManagerApi.onDocumentOpened) {
                         docManagerApi.onDocumentOpened(function(opened) {
@@ -1458,6 +1519,7 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
                                 settled = true;
                                 clearWatchdog();
                                 setStage('document open');
+                                clearPdfCrashFlag();
                             }
                         });
                     }
@@ -1466,6 +1528,7 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
                             if (errInfo && errInfo.documentId === docId) {
                                 settled = true;
                                 clearWatchdog();
+                                clearPdfCrashFlag();
                                 console.error('[PDF watchdog] document-manager reported an error:', errInfo);
                                 showStuckUI('engine reported an error opening the document');
                             }
@@ -1504,6 +1567,7 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
     }).catch(function(err) {
         settled = true;
         clearWatchdog();
+        clearPdfCrashFlag();
         console.error('EmbedPDF failed to load', err);
         if (loadingMsg) {
             loadingMsg.style.pointerEvents = 'auto';
@@ -1524,7 +1588,12 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
 
 
 
+function clearPdfCrashFlag() {
+    try { localStorage.removeItem(PDF_CRASH_FLAG_KEY); } catch (e) {}
+}
+
 function closePdfViewer() {
+    clearPdfCrashFlag(); // user closed it deliberately -- clearly didn't crash
     const viewer = document.getElementById('pdfViewer');
     if (viewer) {
         if (viewer._url) {
