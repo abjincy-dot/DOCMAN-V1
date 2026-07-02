@@ -1,3 +1,4 @@
+```javascript
 // ============================================================
 // DOCMAN - Document Manager
 // Version: 1.0.4 - FULL FIXED VERSION
@@ -3873,3 +3874,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ============================================================
 // END OF FILE
 // ============================================================
+```
