@@ -1,9 +1,24 @@
-const APP_VERSION = '1.0.4';
-const CACHE = 'docman-v126';
-const ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.json', './Images/settings-tray.png', './Images/settings-neon.png', './vendor/jszip/jszip.min.js', './vendor/embedpdf/embedpdf.js', './vendor/embedpdf/embedpdf-7TNsu-EA.js', './vendor/embedpdf/browser-BKLM0ThC-CkSOgtCM.js', './vendor/embedpdf/direct-engine-BA2WfEti.js', './vendor/embedpdf/worker-engine-BkD2-rJn.js', './vendor/embedpdf/pdfium.wasm'];
+const APP_VERSION = '1.0.5';
+const CACHE = 'docman-v127';
+// Small, critical-path files: install fails if any of these can't be cached
+// (they're tiny, so a failure here means something is actually wrong).
+const CORE_ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.json', './Images/settings-tray.png', './Images/settings-neon.png', './vendor/jszip/jszip.min.js'];
+// Larger/optional vendor files: cached best-effort. A single flaky download
+// (pdfium.wasm is ~4.6MB) must never be allowed to sink the whole install,
+// since caches.addAll() is atomic and one failed fetch used to abort
+// skipWaiting() entirely, leaving the OLD service worker in control forever.
+const VENDOR_ASSETS = ['./vendor/embedpdf/embedpdf.js', './vendor/embedpdf/embedpdf-7TNsu-EA.js', './vendor/embedpdf/browser-BKLM0ThC-CkSOgtCM.js', './vendor/embedpdf/direct-engine-BA2WfEti.js', './vendor/embedpdf/worker-engine-BkD2-rJn.js', './vendor/embedpdf/pdfium.wasm'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE).then(c =>
+      c.addAll(CORE_ASSETS).then(() =>
+        Promise.all(VENDOR_ASSETS.map(url => c.add(url).catch(err => {
+          console.warn('[sw] optional asset failed to precache, will fetch at runtime:', url, err);
+        })))
+      )
+    ).then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', e => {
