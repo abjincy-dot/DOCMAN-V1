@@ -1162,6 +1162,13 @@ function openPdfViewer(fileData, fileName) {
         existing.remove();
     }
 
+    // NOTE: We intentionally do NOT hand EmbedPDF a blob: URL. PDFium's worker
+    // fetches document URLs from inside a Web Worker, and Android WebView can't
+    // resolve blob: URLs created on the main thread from within a worker context
+    // (this was the root cause of the earlier "Loading document..." hang). We
+    // still keep a blob URL around for other viewer chrome (title, revoke on
+    // close) but the actual document bytes go to EmbedPDF as an ArrayBuffer via
+    // openDocumentBuffer instead of openDocumentUrl.
     const url = URL.createObjectURL(fileData);
     const docId = 'docman-doc-' + Date.now();
 
@@ -1206,7 +1213,7 @@ function openPdfViewer(fileData, fileName) {
     document.addEventListener('keydown', escHandler);
     viewer._escHandler = escHandler;
 
-    renderPdfWithEmbedPdf(url, docId, fileName);
+    renderPdfWithEmbedPdf(fileData, docId, fileName);
 
 }
 
@@ -1252,7 +1259,7 @@ function loadEmbedPdfModule(forceRetry) {
     }
 })();
 
-function renderPdfWithEmbedPdf(pdfUrl, docId, fileName, forceRetry) {
+function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
     const container = document.getElementById('embedpdfContainer');
     const loadingMsg = document.getElementById('pdfLoadingMsg');
     const viewerEl = document.getElementById('pdfViewer');
@@ -1263,7 +1270,13 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName, forceRetry) {
         loadingMsg.textContent = 'Loading PDF…';
     }
 
-    loadEmbedPdfModule(forceRetry).then(function(mod) {
+    // Read the file into an ArrayBuffer up front. EmbedPDF's PDFium worker
+    // can't fetch blob: URLs on Android WebView, so we feed it raw bytes via
+    // openDocumentBuffer (documentManager: { initialDocuments: [{ buffer }] })
+    // instead of openDocumentUrl.
+    Promise.all([loadEmbedPdfModule(forceRetry), fileData.arrayBuffer()]).then(function(results) {
+        const mod = results[0];
+        const arrayBuffer = results[1];
         // Bail out silently if the viewer was closed while the module was loading.
         if (!document.body.contains(viewerEl)) return;
 
@@ -1284,7 +1297,7 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName, forceRetry) {
             stamp: { manifests: [] },
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
             documentManager: {
-                initialDocuments: [{ url: pdfUrl, documentId: docId, name: fileName }]
+                initialDocuments: [{ buffer: arrayBuffer, documentId: docId, name: fileName }]
             },
             // DOCMAN already has its own Close button + file open/close flow in
             // the pdf-viewer-header above, so EmbedPDF's own Open/Close items are
@@ -1334,7 +1347,7 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName, forceRetry) {
             const retryBtn = document.getElementById('pdfEngineRetryBtn');
             if (retryBtn) {
                 retryBtn.addEventListener('click', function() {
-                    renderPdfWithEmbedPdf(pdfUrl, docId, fileName, true);
+                    renderPdfWithEmbedPdf(fileData, docId, fileName, true);
                 });
             }
         }
