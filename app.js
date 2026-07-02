@@ -1287,9 +1287,6 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
     type: 'container',
     target: container,
     theme: { preference: 'dark' },
-    fontFallback: null,   // <-- add this line
-    // ...rest of your existing config
-});
 
             
             // EmbedPDF's built-in Stamp plugin defaults to fetching a manifest from
