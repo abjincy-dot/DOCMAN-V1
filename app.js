@@ -1284,9 +1284,14 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
         const ZoomMode = mod.ZoomMode;
 
         const instance = EmbedPDF.init({
-            type: 'container',
-            target: container,
-            theme: { preference: 'dark' },
+    type: 'container',
+    target: container,
+    theme: { preference: 'dark' },
+    fontFallback: null,   // <-- add this line
+    // ...rest of your existing config
+});
+
+            
             // EmbedPDF's built-in Stamp plugin defaults to fetching a manifest from
             // cdn.jsdelivr.net on every init (part of its default-stamps feature).
             // That's a hard `await` inside the plugin's initialize() with no timeout,
