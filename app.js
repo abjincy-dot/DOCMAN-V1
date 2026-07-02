@@ -1,19 +1,21 @@
-You're right - the departments are gone because the code I provided was incomplete. I only gave you the PDF-related parts, but the rest of the app code (render function, department display, etc.) was missing.
-
-Let me provide you with the COMPLETE, WORKING app.js that includes all functionality:
-
 ```javascript
 // ============================================================
 // DOCMAN - Document Manager
-// Version: 2.0.0 - COMPLETE WORKING VERSION
+// Version: 1.0.0
 // ============================================================
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '1.0.2';
 
 const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY = 'docman_recents_v1';
 const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
 const PIN_KEY = 'docman_pin_v2';
+// Set right before handing a file to the internal EmbedPDF viewer, cleared
+// as soon as that open resolves (success or clean failure). A stale value
+// found on the NEXT app load means the engine crashed the whole page mid-open
+// last time -- see the crash-recovery check in handlePdfFile(). Deliberately
+// NOT namespaced under SETTINGS_KEY: it must survive independent of settings
+// and be trivial to JSON.parse defensively.
 const PDF_CRASH_FLAG_KEY = 'docman_pdf_open_pending_v1';
 
 // ============================================================
@@ -183,8 +185,8 @@ const defaultSettings = {
     enableAnimations: true,
     enableParticles: true,
     theme: 'dark',
-    pdfOpen: 'docman',
-    pdfThreshold: 25,
+    pdfOpen: 'docman',  // Internal by default
+    pdfThreshold: 50,   // 50MB threshold
     showRecents: true,
     showFavorites: true,
     recentsLimit: 20,
@@ -332,6 +334,7 @@ async function saveAllNotesToDB() {
 
 async function loadFileData(folderPath, fileName) {
     try {
+        // Try the dedicated blobs store first
         const blobId = folderPath + '/' + fileName;
         const blobTx = db.transaction('blobs', 'readonly');
         const blobResult = await new Promise((resolve, reject) => {
@@ -343,6 +346,7 @@ async function loadFileData(folderPath, fileName) {
             return blobResult.blob;
         }
 
+        // Fall back to files store (legacy base64 or old inline blob)
         const tx = db.transaction('files', 'readonly');
         const result = await new Promise((resolve, reject) => {
             const req = tx.objectStore('files').get(folderPath);
@@ -379,6 +383,7 @@ async function loadFileData(folderPath, fileName) {
 
 async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
     try {
+        // Write blob to dedicated store
         const blobId = folderPath + '/' + fileName;
         const blobTx = db.transaction('blobs', 'readwrite');
         blobTx.objectStore('blobs').put({ blobId, blob });
@@ -387,6 +392,7 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
             blobTx.onerror = () => reject(blobTx.error);
         });
 
+        // Update files record — strip blob/dataUrl, keep only metadata
         const fileTx = db.transaction('files', 'readwrite');
         const fileStore = fileTx.objectStore('files');
         const result = await new Promise((resolve, reject) => {
@@ -413,6 +419,7 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
             fileTx.onerror = () => reject(fileTx.error);
         });
 
+        // Update in-memory allFiles
         if (allFiles[folderPath]) {
             const idx = allFiles[folderPath].findIndex(f => f.name === fileName);
             if (idx !== -1) {
@@ -858,12 +865,26 @@ function closeNoteModal() {
 }
 
 // ============================================================
-// FILE VIEWING / OPENING - SIMPLIFIED WORKING VERSION
+// FILE VIEWING / OPENING
 // ============================================================
+
+// ============================================================
+// GESTURE-SAFE PDF OPEN (Samsung Internet fix)
+// ============================================================
+// Samsung Internet drops the user-gesture trust after any await.
+// So for external PDF mode we must call navigator.share() synchronously
+// on the tap, before any async DB reads.
+// Strategy:
+//   If blob is already in allFiles memory → share immediately (synchronous).
+//   If blob needs to be loaded from DB → share() with a Promise trick:
+//     We call share() with a File whose data is loaded async. This works
+//     because the share() call itself is synchronous (gesture is preserved)
+//     even if the file data resolves later.
 
 async function openFileWithGesture(fileEntry, folderPath) {
     trackRecentFile(fileEntry.name);
 
+    // If blob is already in memory, share immediately — zero async gap
     if (fileEntry.fileData instanceof Blob) {
         const file = new File([fileEntry.fileData], fileEntry.name, { type: 'application/pdf' });
         if (navigator.share) {
@@ -872,12 +893,15 @@ async function openFileWithGesture(fileEntry, folderPath) {
                 return;
             } catch (e) {
                 if (e.name === 'AbortError') return;
+                // fall through to normal openFile
             }
         }
         await handlePdfFile(fileEntry.fileData, fileEntry.name);
         return;
     }
 
+    // Blob not in memory yet — load from DB then share
+    // We still call navigator.share() as fast as possible after load
     const fileData = await loadFileData(folderPath, fileEntry.name);
     if (!fileData) { showToast('File not found or could not be loaded', true); return; }
 
@@ -891,12 +915,12 @@ async function openFileWithGesture(fileEntry, folderPath) {
         }
     }
 
-    // Fallback: download
-    const blob = new Blob([fileData], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
+    // Fallback: blob URL
+    const url = URL.createObjectURL(fileData);
     const a = document.createElement('a');
     a.href = url;
-    a.download = fileEntry.name;
+    a.target = '_blank';
+    a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -921,16 +945,10 @@ async function openFile(fileName, folderPath) {
     } else {
         showConfirmModal(`This file type may not be supported.<br>Download "<b>${escapeHtml(fileName)}</b>"?`, (confirmed) => {
             if (confirmed) {
-                const blob = new Blob([fileData], { type: 'application/octet-stream' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(url), 10000);
-                showToast('Downloading: ' + fileName);
+                nativeDownload(fileData, fileName).catch(err => {
+                    console.error('Download failed:', err);
+                    showToast('Could not download file', true);
+                });
             }
         });
     }
@@ -974,32 +992,103 @@ function closeImageViewer() {
 }
 
 // ============================================================
-// PDF HANDLING - SIMPLIFIED WORKING VERSION
+// PDF HANDLING - OPTIMIZED FOR LARGE PDFs
 // ============================================================
 
-let pdfJsLoaded = false;
+let isSharing = false;
+let shareTimeout = null;
 
-// Load PDF.js
-function loadPdfJsLibrary() {
-    return new Promise((resolve, reject) => {
-        if (typeof pdfjsLib !== 'undefined') {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-            resolve(pdfjsLib);
-            return;
+async function handlePdfFile(fileData, fileName) {
+    let openMode = docmanSettings.pdfOpen || 'docman';
+
+    // ------------------------------------------------------------------
+    // CRASH RECOVERY: the internal EmbedPDF/PDFium engine can hard-crash
+    // the renderer (blank white page, whole app/tab restarts) on PDFs
+    // whose *content* (high-res images, complex vectors, bad fonts) blows
+    // its WASM memory budget -- this isn't correlated with file size, so
+    // no size threshold fully prevents it, and because it's a process
+    // crash, no JS here can catch it in the moment (the watchdog below
+    // only catches HANGS, not crashes -- a crash kills the JS context
+    // before any timer/catch can run).
+    //
+    // What we CAN do: mark "about to open internally" right before we
+    // hand off, and clear that mark as soon as we know the document
+    // opened successfully (or failed cleanly). If DOCMAN reloads and
+    // finds a stale mark left over from last time, that means the last
+    // internal open never got a chance to clear it -- i.e. it crashed.
+    // Auto-fall back to External so the user isn't stuck crash-looping
+    // on the same file, and tell them why.
+    // ------------------------------------------------------------------
+    if (openMode === 'docman') {
+        try {
+            const pending = JSON.parse(localStorage.getItem(PDF_CRASH_FLAG_KEY) || 'null');
+            if (pending) {
+                docmanSettings.pdfOpen = 'external';
+                openMode = 'external';
+                saveSettings();
+                localStorage.removeItem(PDF_CRASH_FLAG_KEY);
+                showToast('Built-in PDF viewer crashed last time opening "' + pending.fileName + '". Switched to External for safety -- you can change this back in Settings.', true);
+                await sharePdfExternally(fileData, fileName);
+                return;
+            }
+        } catch (e) { /* ignore malformed flag */ }
+    }
+
+    // ================================================================
+    // SMART SIZE-BASED FALLBACK FOR LARGE PDFs
+    // ================================================================
+    const fileSizeMB = fileData.size / (1024 * 1024);
+    const thresholdBytes = (docmanSettings.pdfThreshold || 50) * 1024 * 1024;
+    
+    // INSTANT FALLBACK for very large files (>50MB or user threshold)
+    if (fileData.size >= thresholdBytes) {
+        showToast('PDF is ' + fileSizeMB.toFixed(1) + ' MB (over ' + (docmanSettings.pdfThreshold || 50) + ' MB threshold) — opening externally.', false);
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
+    
+    // PROACTIVE FALLBACK for files >20MB on iOS (WebKit is more sensitive)
+    if (isIOS() && fileData.size > 20 * 1024 * 1024) {
+        showToast('Large PDF (' + fileSizeMB.toFixed(1) + ' MB) — opening externally for better performance.', false);
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
+    
+    // PROACTIVE FALLBACK for files >30MB on Android (limited memory)
+    if (isAndroid() && fileData.size > 30 * 1024 * 1024) {
+        showToast('Large PDF (' + fileSizeMB.toFixed(1) + ' MB) — opening externally for better performance.', false);
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
+
+    // Samsung Internet - force built-in viewer
+    if (isSamsungBrowser()) {
+        openPdfViewer(fileData, fileName);
+        return;
+    }
+
+    // iOS users can now choose - removed forced external
+    if (isIOS() && openMode === 'docman' && !window._iosEmbedPdfWarned) {
+        window._iosEmbedPdfWarned = true;
+        showToast('Built-in viewer may be slower on iOS. Switch to "External" in Settings if you experience issues.', false);
+    }
+
+    if (openMode === 'docman') {
+        // Check if file is likely to cause crash based on size
+        if (fileData.size > 15 * 1024 * 1024) {
+            showToast('Opening large PDF (' + fileSizeMB.toFixed(1) + ' MB) — may take a moment...', false);
         }
-        
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-        script.onload = () => {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-            resolve(pdfjsLib);
-        };
-        script.onerror = reject;
-        document.head.appendChild(script);
-    });
+        openPdfViewer(fileData, fileName);
+    } else {
+        await sharePdfExternally(fileData, fileName);
+    }
 }
 
 function isIOS() {
+    // Covers iPhone/iPad Safari and Chrome-for-iOS (which is WebKit under the
+    // hood too -- Apple requires all iOS browsers to use WebKit). Also catches
+    // iPadOS 13+ which reports as "Macintosh" but exposes touch support, unlike
+    // real Macs.
     return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
@@ -1008,252 +1097,529 @@ function isAndroid() {
     return /android/i.test(navigator.userAgent);
 }
 
-async function handlePdfFile(fileData, fileName) {
-    const fileSizeMB = fileData.size / (1024 * 1024);
-    const thresholdBytes = (docmanSettings.pdfThreshold || 25) * 1024 * 1024;
-    
-    // If file is too large or user wants external, open externally
-    if (fileData.size >= thresholdBytes || docmanSettings.pdfOpen === 'external') {
-        showToast('Opening PDF externally...', false);
-        const blob = new Blob([fileData], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.target = '_blank';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 30000);
+function isSamsungBrowser() {
+    return /SamsungBrowser/i.test(navigator.userAgent);
+}
+
+async function sharePdfExternally(fileData, fileName) {
+    // ── Android ───────────────────────────────────────────────────────────────
+    // blob: URLs are origin-scoped; default Android browsers treat any attempt
+    // to open one in a new tab as a download.  The only approach that reliably
+    // triggers the OS "Open with…" chooser across Chrome, Samsung Internet,
+    // MIUI browser, and standalone-PWA mode is Web Share API with a File object.
+    // We try it unconditionally (not guarded by canShare) because some browsers
+    // report canShare=false yet still execute share() correctly.
+    if (isAndroid()) {
+        const file = new File([fileData], fileName, { type: 'application/pdf' });
+
+        // Try Web Share API — works on Chrome, Samsung Internet 12+, and PWA mode
+        if (navigator.share) {
+            try {
+                await navigator.share({ files: [file], title: fileName });
+                return;
+            } catch (err) {
+                if (err.name === 'AbortError') return; // user dismissed
+                // NotAllowedError, DataError, etc — fall through to blob URL
+                console.warn('navigator.share failed:', err.name, err.message);
+            }
+        }
+
+        // Last resort: open blob URL in new tab.
+        // On Chrome browser (non-standalone) this shows "Open with…".
+        // On default browser it may download — but there is no better option
+        // if share() is completely unavailable.
+        // In Capacitor WebView, blob URLs in new tabs don't work — use nativeDownload
+        if (window.Capacitor) {
+            await nativeDownload(fileData, fileName);
+        } else {
+            try {
+                const url = URL.createObjectURL(fileData);
+                const a = document.createElement('a');
+                a.href = url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 30000);
+            } catch (e) {
+                downloadPdf(fileData, fileName);
+            }
+        }
         return;
     }
 
-    // Try internal viewer
+    // ── iOS / Desktop ─────────────────────────────────────────────────────────
     try {
-        await openPdfViewer(fileData, fileName);
-    } catch (e) {
-        console.error('Internal viewer failed:', e);
-        showToast('Internal viewer failed. Downloading...', true);
-        const blob = new Blob([fileData], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 30000);
+        isSharing = true;
+        const file = new File([fileData], fileName, { type: 'application/pdf' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({ files: [file], title: fileName });
+                showToast('Shared: ' + fileName);
+            } catch (shareErr) {
+                if (shareErr.name === 'AbortError') {
+                    console.log('Share cancelled by user');
+                } else if (shareErr.name === 'NotAllowedError') {
+                    showToast('Share not allowed. Downloading instead...');
+                    downloadPdf(fileData, fileName);
+                } else {
+                    console.warn('Share error:', shareErr);
+                    showToast('Opening in external app failed. Downloading instead...');
+                    downloadPdf(fileData, fileName);
+                }
+            }
+        } else {
+            showToast('Share not available. Downloading...');
+            downloadPdf(fileData, fileName);
+        }
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            showToast('Could not open PDF: ' + err.message, true);
+            try {
+                downloadPdf(fileData, fileName);
+            } catch (downloadErr) {
+                console.error('Download fallback failed:', downloadErr);
+                showToast('Could not open or download file', true);
+            }
+        }
+    } finally {
+        isSharing = false;
+        if (shareTimeout) {
+            clearTimeout(shareTimeout);
+            shareTimeout = null;
+        }
     }
 }
 
-// ============================================================
-// PDF VIEWER - SIMPLE CANVAS RENDERER
-// ============================================================
+async function nativeDownload(blob, fileName) {
+    const Filesystem = window.Capacitor?.Plugins?.Filesystem;
+    const Share = window.Capacitor?.Plugins?.Share;
 
+    if (Filesystem && Share) {
+        try {
+            const reader = new FileReader();
+            const base64 = await new Promise((resolve, reject) => {
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            const result = await Filesystem.writeFile({
+                path: fileName,
+                data: base64,
+                directory: 'CACHE'
+            });
+            await Share.share({ title: fileName, url: result.uri });
+            return;
+        } catch (e) {
+            console.warn('Capacitor download failed, falling back:', e);
+        }
+    }
+
+    // PWA / browser fallback
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function downloadPdf(fileData, fileName) {
+    nativeDownload(fileData, fileName)
+        .then(() => showToast('Downloading: ' + fileName))
+        .catch(err => {
+            console.error('Download failed:', err);
+            showToast('Could not download file', true);
+        });
+}
+
+// ============================================================
+// BUILT-IN PDF VIEWER - WITH MEMORY PROTECTION
+// ============================================================
 function openPdfViewer(fileData, fileName) {
     const existing = document.getElementById('pdfViewer');
-    if (existing) existing.remove();
+    if (existing) {
+        if (existing._url) URL.revokeObjectURL(existing._url);
+        existing.remove();
+    }
 
-    const url = URL.createObjectURL(fileData);
+    // Check file size before opening - if too large, force external
     const fileSizeMB = fileData.size / (1024 * 1024);
-
-    // If file is very large, don't try internal
-    if (fileSizeMB > 20) {
-        showToast('PDF is ' + fileSizeMB.toFixed(1) + ' MB — too large for internal viewer.', true);
-        const blob = new Blob([fileData], { type: 'application/pdf' });
-        const url2 = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url2;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url2), 30000);
+    
+    // If file is extremely large (>80MB), don't even try internal
+    if (fileSizeMB > 80) {
+        showToast('PDF is ' + fileSizeMB.toFixed(1) + ' MB — too large for internal viewer. Opening externally.', true);
+        sharePdfExternally(fileData, fileName);
         return;
     }
 
+    const url = URL.createObjectURL(fileData);
+    const docId = 'docman-doc-' + Date.now();
+
     const viewer = document.createElement('div');
     viewer.id = 'pdfViewer';
+    viewer.className = 'pdf-viewer';
     viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
 
+    // Add memory indicator for large files
+    const memoryWarning = fileSizeMB > 25 ? 
+        `<span style="color:#f59e0b;font-size:0.7rem;margin-right:8px;">⚠️ ${fileSizeMB.toFixed(1)}MB</span>` : '';
+
     viewer.innerHTML = `
-        <div style="padding:12px 16px;background:#212937;border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;flex-shrink:0;min-height:52px;">
-            <button onclick="closePdfViewer()" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#ef4444;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;">
+        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:#212937;border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;flex-shrink:0;z-index:2;min-height:52px;touch-action:manipulation;">
+            <button onclick="closePdfViewer()" ontouchstart="" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#ef4444;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;letter-spacing:0.02em;touch-action:manipulation;flex-shrink:0;">
                 Close
             </button>
-            <span style="flex:1;color:#e2e8f0;font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(fileName)}</span>
-            ${fileSizeMB > 5 ? `<span style="color:#f59e0b;font-size:0.7rem;">${fileSizeMB.toFixed(1)}MB</span>` : ''}
-            <div style="display:flex;align-items:center;gap:4px;">
-                <button id="pdfZoomOut" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;">−</button>
-                <span id="pdfZoomLabel" style="color:#94a3b8;font-size:0.75rem;font-weight:600;width:44px;text-align:center;">100%</span>
-                <button id="pdfZoomIn" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;">+</button>
+            <span class="pdf-viewer-title" style="flex:1;color:#e2e8f0;font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;">${escapeHtml(fileName)}</span>
+            ${memoryWarning}
+            <div style="width:1px;align-self:stretch;background:rgba(255,255,255,0.15);flex-shrink:0;margin:0 2px;"></div>
+            <div id="pdfZoomControls" style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
+                <button id="pdfZoomOutBtn" title="Zoom out" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-minus" style="font-size:0.7rem;"></i></button>
+                <span id="pdfZoomLabel" style="color:#94a3b8;font-size:0.75rem;font-weight:600;width:44px;text-align:center;font-family:Inter,sans-serif;">100%</span>
+                <button id="pdfZoomInBtn" title="Zoom in" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-plus" style="font-size:0.7rem;"></i></button>
+                <div style="width:1px;align-self:stretch;background:rgba(255,255,255,0.15);flex-shrink:0;margin:0 6px;"></div>
+                <button id="pdfFitWidthBtn" title="Fit width" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-arrows-left-right" style="font-size:0.7rem;"></i></button>
+                <button id="pdfFitPageBtn" title="Fit page" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-expand" style="font-size:0.7rem;"></i></button>
             </div>
         </div>
-        <div id="pdfContainer" style="flex:1;overflow:auto;background:#2a2a2a;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px;"></div>
-        <div id="pdfLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-family:Inter,sans-serif;font-size:0.9rem;background:#2a2a2a;z-index:5;">
-            <div style="text-align:center;">
-                <div style="display:inline-block;width:30px;height:30px;border:3px solid rgba(255,255,255,0.1);border-top:3px solid #3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;"></div>
-                <div>Loading PDF${fileSizeMB > 3 ? ' (' + fileSizeMB.toFixed(1) + ' MB)' : ''}…</div>
+        <div id="pdfViewerBody" style="flex:1;position:relative;background:#2a2a2a;overflow:hidden;">
+            <div id="embedpdfContainer" style="width:100%;height:100%;"></div>
+            <div id="pdfLoadingMsg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-family:Inter,sans-serif;font-size:0.9rem;pointer-events:none;">
+                <div style="text-align:center;">
+                    <div style="display:inline-block;width:30px;height:30px;border:3px solid rgba(255,255,255,0.1);border-top:3px solid #3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;"></div>
+                    <div>Loading PDF${fileSizeMB > 10 ? ' (' + fileSizeMB.toFixed(1) + ' MB)' : ''}…</div>
+                    ${fileSizeMB > 15 ? '<div style="font-size:0.7rem;color:#6b7280;margin-top:6px;">Large file — please be patient</div>' : ''}
+                </div>
             </div>
         </div>
     `;
+
+    // Add spin animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    `;
+    viewer.appendChild(style);
 
     document.body.appendChild(viewer);
     viewer._url = url;
     viewer._fileName = fileName;
     viewer._fileData = fileData;
 
-    renderPdfPages(fileData, viewer);
+    // Arm the crash-recovery flag
+    try {
+        localStorage.setItem(PDF_CRASH_FLAG_KEY, JSON.stringify({ fileName: fileName, time: Date.now(), size: fileData.size }));
+    } catch (e) { /* ignore */ }
+
+    const escHandler = function(e) {
+        if (e.key === 'Escape') {
+            closePdfViewer();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+    viewer._escHandler = escHandler;
+
+    renderPdfWithEmbedPdf(fileData, docId, fileName);
 }
 
-function renderPdfPages(fileData, viewerEl) {
-    const container = document.getElementById('pdfContainer');
-    const loading = document.getElementById('pdfLoading');
-    const zoomLabel = document.getElementById('pdfZoomLabel');
-    const zoomIn = document.getElementById('pdfZoomIn');
-    const zoomOut = document.getElementById('pdfZoomOut');
+// ============================================================
+// EmbedPDF (PDFium/WASM) rendering engine - ENHANCED
+// ============================================================
 
-    let pdfDoc = null;
-    let currentScale = 1;
-    let totalPages = 0;
+// Vendored locally in vendor/embedpdf/ (embedpdf.js + pdfium.wasm)
+const EMBEDPDF_LOCAL = './vendor/embedpdf/embedpdf.js';
+let embedPdfModulePromise = null;
 
-    function renderPage(pageNum) {
-        pdfDoc.getPage(pageNum).then(page => {
-            const viewport = page.getViewport({ scale: currentScale });
-            
-            const canvas = document.createElement('canvas');
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            canvas.style.width = Math.min(viewport.width, container.clientWidth - 40) + 'px';
-            canvas.style.height = 'auto';
-            canvas.style.margin = '0 auto';
-            canvas.style.background = 'white';
-            canvas.style.boxShadow = '0 2px 10px rgba(0,0,0,0.5)';
-            canvas.style.borderRadius = '4px';
-            
-            const context = canvas.getContext('2d');
-            page.render({ canvasContext: context, viewport: viewport });
-            
-            // Remove existing canvas for this page
-            const existingCanvas = container.querySelector(`canvas[data-page="${pageNum}"]`);
-            if (existingCanvas) existingCanvas.remove();
-            
-            canvas.dataset.page = pageNum;
-            container.appendChild(canvas);
-            
-            // Update loading
-            if (pageNum === 1) {
-                loading.style.display = 'none';
+function loadEmbedPdfModule(forceRetry) {
+    if (forceRetry) embedPdfModulePromise = null;
+    if (!embedPdfModulePromise) {
+        const importPromise = import(/* webpackIgnore: true */ EMBEDPDF_LOCAL);
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('EmbedPDF load timed out')), 30000);
+        });
+        embedPdfModulePromise = Promise.race([importPromise, timeoutPromise]).catch(err => {
+            embedPdfModulePromise = null;
+            throw err;
+        });
+    }
+    return embedPdfModulePromise;
+}
+
+// Warm up the PDF engine in the background
+(function preloadEmbedPdf() {
+    const warm = () => { loadEmbedPdfModule().catch(() => {}); };
+    if ('requestIdleCallback' in window) {
+        requestIdleCallback(warm, { timeout: 5000 });
+    } else {
+        setTimeout(warm, 1500);
+    }
+})();
+
+function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
+    const container = document.getElementById('embedpdfContainer');
+    const loadingMsg = document.getElementById('pdfLoadingMsg');
+    const viewerEl = document.getElementById('pdfViewer');
+    if (!container || !viewerEl) return;
+
+    // Enhanced loading message for large files
+    const fileSizeMB = fileData.size / (1024 * 1024);
+    
+    if (loadingMsg && fileSizeMB > 10) {
+        loadingMsg.innerHTML = `
+            <div style="text-align:center;">
+                <div style="display:inline-block;width:30px;height:30px;border:3px solid rgba(255,255,255,0.1);border-top:3px solid #3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;"></div>
+                <div>Loading PDF (${fileSizeMB.toFixed(1)} MB)…</div>
+                <div style="font-size:0.7rem;color:#6b7280;margin-top:6px;">This may take a moment</div>
+            </div>
+        `;
+    }
+
+    let stage = 'starting';
+    let watchdogTimer = null;
+    let settled = false;
+    let startTime = Date.now();
+
+    function setStage(s) {
+        stage = s;
+        console.log('[PDF watchdog] stage:', s, '-', fileName, 'size:', fileSizeMB.toFixed(1) + 'MB');
+    }
+
+    function clearWatchdog() {
+        if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
+    }
+
+    function showStuckUI(stageAtTimeout) {
+        if (settled) return;
+        clearPdfCrashFlag();
+        if (!document.body.contains(viewerEl)) return;
+        
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const msgEl = document.getElementById('pdfLoadingMsg') || loadingMsg;
+        const host = msgEl && document.body.contains(msgEl) ? msgEl : container;
+        if (!host) return;
+        
+        console.warn('[PDF watchdog] stuck at stage:', stageAtTimeout, '-', fileName, 'elapsed:', elapsed + 's');
+        host.style.pointerEvents = 'auto';
+        host.style.position = 'absolute';
+        host.style.inset = '0';
+        host.style.display = 'flex';
+        host.style.alignItems = 'center';
+        host.style.justifyContent = 'center';
+        host.style.background = '#2a2a2a';
+        host.innerHTML = `
+            <div style="text-align:center;padding:0 24px;max-width:340px;">
+                <div style="color:#e2e8f0;font-family:Inter,sans-serif;font-size:0.9rem;margin-bottom:6px;">
+                    ${fileSizeMB > 15 ? '⚠️ Large PDF is taking too long to open.' : 'This PDF is taking too long to open.'}
+                </div>
+                <div style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.75rem;margin-bottom:4px;">Size: ${fileSizeMB.toFixed(1)} MB</div>
+                <div style="color:#6b7280;font-family:Inter,sans-serif;font-size:0.7rem;margin-bottom:16px;">Stuck at: ${escapeHtml(stageAtTimeout)} (${elapsed}s)</div>
+                <div>
+                    <button id="pdfWatchdogRetryBtn" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Retry</button>
+                    <button id="pdfWatchdogExternalBtn" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Open Externally</button>
+                </div>
+            </div>
+        `;
+        
+        const retryBtn = document.getElementById('pdfWatchdogRetryBtn');
+        if (retryBtn) retryBtn.addEventListener('click', function() {
+            if (viewerEl._embedPdfInstance && viewerEl._embedPdfInstance.destroy) {
+                try { viewerEl._embedPdfInstance.destroy(); } catch (e) {}
             }
-        }).catch(err => {
-            console.error('Page render error:', err);
-            loading.innerHTML = `<div style="text-align:center;color:#ef4444;">Failed to render page ${pageNum}</div>`;
+            container.innerHTML = '';
+            renderPdfWithEmbedPdf(fileData, docId, fileName, true);
+        });
+        
+        const externalBtn = document.getElementById('pdfWatchdogExternalBtn');
+        if (externalBtn) externalBtn.addEventListener('click', function() {
+            sharePdfExternally(fileData, fileName);
         });
     }
 
-    function renderAllPages() {
-        if (!pdfDoc) return;
-        container.innerHTML = '';
-        for (let i = 1; i <= totalPages; i++) {
-            renderPage(i);
-        }
+    // Adjust timeout based on file size
+    const timeoutMs = Math.min(60000, Math.max(20000, fileSizeMB * 1000 + 15000));
+    function armWatchdog(ms) {
+        clearWatchdog();
+        watchdogTimer = setTimeout(function() { showStuckUI(stage); }, ms || timeoutMs);
     }
 
-    loadPdfJsLibrary().then(lib => {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const arrayBuffer = e.target.result;
-            lib.getDocument({ data: arrayBuffer }).promise.then(doc => {
-                pdfDoc = doc;
-                totalPages = doc.numPages;
-                renderAllPages();
-                
-                zoomIn.onclick = () => {
-                    currentScale = Math.min(currentScale + 0.1, 3);
-                    zoomLabel.textContent = Math.round(currentScale * 100) + '%';
-                    renderAllPages();
-                };
-                
-                zoomOut.onclick = () => {
-                    currentScale = Math.max(currentScale - 0.1, 0.3);
-                    zoomLabel.textContent = Math.round(currentScale * 100) + '%';
-                    renderAllPages();
-                };
-                
-                // Keyboard shortcuts
-                document.addEventListener('keydown', function onKey(e) {
-                    if (e.key === 'ArrowRight') {
-                        const canvases = container.querySelectorAll('canvas');
-                        // Scroll to next page
-                        let found = false;
-                        for (let c of canvases) {
-                            if (c.getBoundingClientRect().top >= 0 && !found) {
-                                found = true;
-                                continue;
+    armWatchdog(timeoutMs);
+
+    // Read file bytes
+    setStage('loading engine module + reading file bytes');
+    
+    const loadModule = loadEmbedPdfModule(forceRetry);
+    const readBuffer = fileData.arrayBuffer();
+    
+    Promise.all([loadModule, readBuffer]).then(function(results) {
+        const mod = results[0];
+        const arrayBuffer = results[1];
+        if (!document.body.contains(viewerEl)) { clearWatchdog(); return; }
+
+        setStage('initializing PDFium engine (wasm)');
+        const EmbedPDF = mod.default;
+        const ZoomMode = mod.ZoomMode;
+
+        // --- OPTIMIZED CONFIGURATION ---
+        const instance = EmbedPDF.init({
+            type: 'container',
+            target: container,
+            theme: { preference: 'dark' },
+            wasmUrl: new URL('./vendor/embedpdf/pdfium.wasm', document.baseURI).href,
+            fontFallback: null,
+            fonts: { 
+                ui: { stylesheetUrl: null }, 
+                signature: { stylesheetUrl: null } 
+            },
+            stamp: { manifests: [] },
+            zoom: { defaultZoomLevel: ZoomMode.FitPage },
+            documentManager: {
+                initialDocuments: [{ buffer: arrayBuffer, documentId: docId, name: fileName }]
+            },
+            disabledCategories: ['document-open', 'document-close']
+        });
+        
+        viewerEl._embedPdfInstance = instance;
+        setStage('waiting for plugin registry');
+
+        instance.registry.then(function(registry) {
+            if (loadingMsg) loadingMsg.remove();
+            if (!document.body.contains(viewerEl)) { clearWatchdog(); return; }
+
+            setStage('opening document (PDFium parsing)');
+            armWatchdog(timeoutMs);
+
+            const docManagerApi = registry.getPlugin('document-manager')?.provides();
+            if (docManagerApi) {
+                if (docManagerApi.isDocumentOpen && docManagerApi.isDocumentOpen(docId)) {
+                    settled = true;
+                    clearWatchdog();
+                    setStage('document open');
+                    clearPdfCrashFlag();
+                } else {
+                    if (docManagerApi.onDocumentOpened) {
+                        docManagerApi.onDocumentOpened(function(opened) {
+                            if (opened && opened.documentId === docId) {
+                                settled = true;
+                                clearWatchdog();
+                                setStage('document open');
+                                clearPdfCrashFlag();
                             }
-                            if (found) {
-                                c.scrollIntoView({ behavior: 'smooth' });
-                                break;
-                            }
-                        }
+                        });
                     }
+                    if (docManagerApi.onDocumentError) {
+                        docManagerApi.onDocumentError(function(errInfo) {
+                            if (errInfo && errInfo.documentId === docId) {
+                                settled = true;
+                                clearWatchdog();
+                                clearPdfCrashFlag();
+                                console.error('[PDF watchdog] document-manager reported an error:', errInfo);
+                                showStuckUI('engine reported an error opening the document');
+                            }
+                        });
+                    }
+                }
+            }
+
+            // Zoom controls
+            const zoomApi = registry.getPlugin('zoom')?.provides()?.forDocument(docId);
+            if (!zoomApi) return;
+
+            const zoomLabel = document.getElementById('pdfZoomLabel');
+            const zoomInBtn = document.getElementById('pdfZoomInBtn');
+            const zoomOutBtn = document.getElementById('pdfZoomOutBtn');
+            const fitWidthBtn = document.getElementById('pdfFitWidthBtn');
+            const fitPageBtn = document.getElementById('pdfFitPageBtn');
+
+            function refreshZoomLabel() {
+                if (!zoomLabel) return;
+                const state = zoomApi.getState();
+                zoomLabel.textContent = Math.round(state.currentZoomLevel * 100) + '%';
+            }
+
+            zoomApi.onStateChange(refreshZoomLabel);
+            refreshZoomLabel();
+
+            if (zoomInBtn) zoomInBtn.addEventListener('click', function() { zoomApi.zoomIn(); });
+            if (zoomOutBtn) zoomOutBtn.addEventListener('click', function() { zoomApi.zoomOut(); });
+            if (fitWidthBtn) fitWidthBtn.addEventListener('click', function() { zoomApi.requestZoom(ZoomMode.FitWidth); });
+            if (fitPageBtn) fitPageBtn.addEventListener('click', function() { zoomApi.requestZoom(ZoomMode.FitPage); });
+        });
+    }).catch(function(err) {
+        settled = true;
+        clearWatchdog();
+        clearPdfCrashFlag();
+        console.error('EmbedPDF failed to load', err);
+        
+        // For large files, automatically fallback to external
+        if (fileSizeMB > 15) {
+            showToast('PDF engine failed for large file. Opening externally...', true);
+            sharePdfExternally(fileData, fileName);
+            return;
+        }
+        
+        if (loadingMsg) {
+            loadingMsg.style.pointerEvents = 'auto';
+            loadingMsg.innerHTML = '<div style="text-align:center;padding:0 24px;">' +
+                'Could not load the PDF engine. Check your internet connection and try again.' +
+                '<br><button id="pdfEngineRetryBtn" style="margin-top:14px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;">Retry</button>' +
+                '<br><button id="pdfEngineExternalBtn" style="margin-top:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;">Open Externally</button>' +
+                '</div>';
+            const retryBtn = document.getElementById('pdfEngineRetryBtn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', function() {
+                    renderPdfWithEmbedPdf(fileData, docId, fileName, true);
                 });
-                
-            }).catch(err => {
-                console.error('PDF load error:', err);
-                loading.innerHTML = `<div style="text-align:center;color:#ef4444;">Failed to load PDF. <button onclick="downloadPdfFallback()" style="background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.4);border-radius:8px;color:#3b82f6;padding:8px 22px;margin-top:12px;cursor:pointer;">Download</button></div>`;
-            });
-        };
-        reader.readAsArrayBuffer(fileData);
-    }).catch(err => {
-        console.error('PDF.js load error:', err);
-        loading.innerHTML = `<div style="text-align:center;color:#ef4444;">Failed to load PDF viewer. <button onclick="downloadPdfFallback()" style="background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.4);border-radius:8px;color:#3b82f6;padding:8px 22px;margin-top:12px;cursor:pointer;">Download</button></div>`;
+            }
+            const externalBtn = document.getElementById('pdfEngineExternalBtn');
+            if (externalBtn) {
+                externalBtn.addEventListener('click', function() {
+                    sharePdfExternally(fileData, fileName);
+                });
+            }
+        }
     });
 }
 
-function downloadPdfFallback() {
-    const viewer = document.getElementById('pdfViewer');
-    if (viewer && viewer._fileData) {
-        const blob = new Blob([viewer._fileData], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = viewer._fileName || 'document.pdf';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 30000);
-        showToast('Downloading: ' + (viewer._fileName || 'document.pdf'));
-    }
+function clearPdfCrashFlag() {
+    try { localStorage.removeItem(PDF_CRASH_FLAG_KEY); } catch (e) {}
 }
 
 function closePdfViewer() {
+    clearPdfCrashFlag();
     const viewer = document.getElementById('pdfViewer');
     if (viewer) {
-        if (viewer._url) URL.revokeObjectURL(viewer._url);
+        if (viewer._url) {
+            URL.revokeObjectURL(viewer._url);
+        }
+        if (viewer._escHandler) {
+            document.removeEventListener('keydown', viewer._escHandler);
+        }
         viewer.remove();
+        isSharing = false;
+        if (shareTimeout) {
+            clearTimeout(shareTimeout);
+            shareTimeout = null;
+        }
     }
 }
 
 function downloadPdfFromViewer() {
     const viewer = document.getElementById('pdfViewer');
-    if (viewer && viewer._fileData) {
-        const blob = new Blob([viewer._fileData], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = viewer._fileName || 'document.pdf';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 30000);
-        showToast('Downloading: ' + (viewer._fileName || 'document.pdf'));
+    if (viewer && viewer._url && viewer._fileName) {
+        downloadPdf(viewer._fileData || viewer._url, viewer._fileName);
     }
 }
 
+// Expose PDF viewer functions to window
 window.closePdfViewer = closePdfViewer;
 window.downloadPdfFromViewer = downloadPdfFromViewer;
-window.downloadPdfFallback = downloadPdfFallback;
 
 // ============================================================
 // CONTEXT MENU
@@ -1709,7 +2075,7 @@ function clearSearch() {
 }
 
 // ============================================================
-// RENDER - COMPLETE WORKING VERSION
+// RENDER
 // ============================================================
 
 function render() {
@@ -2402,7 +2768,290 @@ function applyRadioUI(radioName) {
 }
 
 // ============================================================
-// SETTINGS PANEL RENDERERS (Continued)
+// PIN VERIFICATION
+// ============================================================
+
+function showPinVerifyModal(title, callback) {
+    const existing = document.getElementById('pinVerifyModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'pinVerifyModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;';
+    overlay.innerHTML = `
+        <div style="background:#1a1a1a;border:1px solid rgba(239,68,68,0.4);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
+            <div style="width:48px;height:48px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.4rem;">🔒</div>
+            <p style="color:#e2e8f0;font-size:0.95rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;">${title}</p>
+            <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 20px;font-family:Inter,sans-serif;">Enter your 4-digit PIN to confirm</p>
+            <div id="pinVerifyDots" style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;">
+                ${[0,1,2,3].map(i => `<div id="pvDot${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);transition:all 0.15s;"></div>`).join('')}
+            </div>
+            <div id="pinVerifyGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+                ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k => `
+                    <button class="pvKey" data-key="${k}" style="padding:16px 0;border-radius:14px;border:1px solid rgba(255,255,255,${k===''?'0':'0.1'});background:${k===''?'transparent':'rgba(255,255,255,0.06)'};color:#e2e8f0;font-size:1.15rem;font-weight:600;font-family:Inter,sans-serif;cursor:${k===''?'default':'pointer'};pointer-events:${k===''?'none':'auto'};transition:background 0.1s;">${k}</button>
+                `).join('')}
+            </div>
+            <button id="pvCancel" style="width:100%;padding:12px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    let entered = '';
+    const storedPin = localStorage.getItem(PIN_KEY) || '';
+
+    function updateDots() {
+        for (let i = 0; i < 4; i++) {
+            const dot = document.getElementById(`pvDot${i}`);
+            dot.style.background = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.15)';
+            dot.style.borderColor = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.25)';
+        }
+    }
+
+    function shakeModal() {
+        const box = overlay.querySelector('div');
+        box.style.animation = 'none';
+        box.style.transition = 'transform 0.05s';
+        let count = 0;
+        const interval = setInterval(() => {
+            box.style.transform = count % 2 === 0 ? 'translateX(8px)' : 'translateX(-8px)';
+            count++;
+            if (count > 5) { clearInterval(interval);
+                box.style.transform = ''; }
+        }, 50);
+    }
+
+    overlay.querySelectorAll('.pvKey').forEach(btn => {
+        btn.addEventListener('pointerdown', () => { btn.style.background = 'rgba(255,255,255,0.14)'; });
+        btn.addEventListener('pointerup', () => { btn.style.background = 'rgba(255,255,255,0.06)'; });
+        btn.addEventListener('click', async () => {
+            const k = btn.dataset.key;
+            if (k === '⌫') {
+                entered = entered.slice(0, -1);
+                updateDots();
+            } else if (entered.length < 4 && k !== '') {
+                entered += k;
+                updateDots();
+                if (entered.length === 4) {
+                    const enteredHash = await hashPin(entered);
+                    if (enteredHash === storedPin) {
+                        overlay.remove();
+                        callback(true);
+                    } else {
+                        showToast('Incorrect PIN', true);
+                        entered = '';
+                        updateDots();
+                        shakeModal();
+                    }
+                }
+            }
+        });
+    });
+
+    document.getElementById('pvCancel').onclick = () => { overlay.remove();
+        callback(false); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove();
+            callback(false); } });
+}
+
+function promptSetPin(callback) {
+    showPromptModal('Set a 4-digit PIN:', '', async (val) => {
+        if (val === null) { callback(false); return; }
+        const pin = val.trim();
+        if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true);
+            callback(false); return; }
+        localStorage.setItem(PIN_KEY, await hashPin(pin));
+        showToast('PIN saved');
+        callback(true);
+    });
+}
+
+function updatePinStatusUI() {
+    const hasPin = !!localStorage.getItem(PIN_KEY);
+    const sub = document.getElementById('pinStatusSub');
+    const changeCard = document.getElementById('changePinCard');
+    const lockToggle = document.getElementById('appLockToggle');
+    if (sub) sub.textContent = hasPin ? 'PIN is set' : 'Not set';
+    if (changeCard) changeCard.classList.toggle('hidden', !docmanSettings.appLock);
+    if (lockToggle) lockToggle.checked = docmanSettings.appLock;
+}
+
+// ============================================================
+// EXPORT / IMPORT
+// ============================================================
+
+async function exportBackupData() {
+    showToast('Preparing backup…');
+    try {
+        const manifest = {
+            fileSystem,
+            allNotes,
+            deptColors,
+            exportedAt: new Date().toISOString(),
+            version: APP_VERSION,
+            format: 'docman-zip-v1'
+        };
+
+        manifest.fileMetadata = {};
+        for (const path in allFiles) {
+            if (allFiles[path]) {
+                manifest.fileMetadata[path] = allFiles[path].map(f => ({
+                    name: f.name,
+                    type: f.type,
+                    uploadedAt: f.uploadedAt,
+                    favourite: f.favourite || false,
+                    size: f.size || 0
+                }));
+            }
+        }
+
+        const zip = new JSZip();
+        zip.file('manifest.json', JSON.stringify(manifest));
+        const filesFolder = zip.folder('files');
+
+        // Pull every file's actual content (lazy-loading blobs as needed) into the zip.
+        // Zip entry path mirrors folderPath/fileName so import can match it back to its folder.
+        for (const path in allFiles) {
+            for (const f of (allFiles[path] || [])) {
+                try {
+                    const blob = await loadFileData(path, f.name);
+                    if (blob) {
+                        filesFolder.file(path + '/' + f.name, blob);
+                    } else {
+                        console.warn('No data found for', path, f.name, '— skipping content, metadata only');
+                    }
+                } catch (e) {
+                    console.warn('Failed to read file for backup:', path, f.name, e);
+                }
+            }
+        }
+
+        const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+        const backupFileName = `docman-backup-${Date.now()}.zip`;
+        await nativeDownload(zipBlob, backupFileName);
+        showToast('Backup exported');
+    } catch (err) {
+        console.error('Backup export failed:', err);
+        showToast('Could not export backup', true);
+    }
+}
+
+function importBackupData(file) {
+    (async () => {
+        try {
+            const zip = await JSZip.loadAsync(file);
+            const manifestEntry = zip.file('manifest.json');
+            if (!manifestEntry) { showToast('Invalid backup file', true); return; }
+
+            const manifest = JSON.parse(await manifestEntry.async('string'));
+            if (!manifest.fileSystem) { showToast('Invalid backup file', true); return; }
+
+            showConfirmModal('This will <b>replace all current data</b> with the backup. Continue?', async (ok) => {
+                if (!ok) return;
+
+                showToast('Restoring backup…');
+
+                fileSystem = manifest.fileSystem || {};
+                allNotes = manifest.allNotes || {};
+                deptColors = manifest.deptColors || {};
+                allFiles = {};
+
+                if (manifest.fileMetadata) {
+                    for (const path in manifest.fileMetadata) {
+                        if (!manifest.fileMetadata[path]) continue;
+                        allFiles[path] = [];
+                        for (const f of manifest.fileMetadata[path]) {
+                            const zipEntry = zip.file('files/' + path + '/' + f.name);
+                            let fileData = null;
+                            if (zipEntry) {
+                                try {
+                                    fileData = await zipEntry.async('blob');
+                                } catch (e) {
+                                    console.warn('Failed to read file from backup:', path, f.name, e);
+                                }
+                            }
+                            allFiles[path].push({
+                                name: f.name,
+                                type: f.type || 'application/octet-stream',
+                                uploadedAt: f.uploadedAt || Date.now(),
+                                favourite: f.favourite || false,
+                                size: f.size || (fileData ? fileData.size : 0),
+                                fileData: fileData,
+                                _hasData: !!fileData,
+                                _isBase64: false
+                            });
+                        }
+                    }
+                }
+
+                await saveFolderStructure();
+                await saveDeptColors();
+                await saveAllNotesToDB();
+                await saveAllFilesToDB();
+                await loadAllFileMetadata();
+
+                currentPath = [];
+                closeSettingsPage();
+                render();
+                showToast('Data imported successfully');
+            });
+        } catch (err) {
+            console.error('Backup import failed:', err);
+            showToast('Failed to read backup: ' + err.message, true);
+        }
+    })();
+}
+
+// ============================================================
+// CLEAR ALL DATA
+// ============================================================
+
+async function doEraseAllData() {
+    fileSystem = {};
+    allFiles = {};
+    allNotes = {};
+    deptColors = {};
+    await saveFolderStructure();
+    await saveDeptColors();
+    const tx = db.transaction(['files', 'notes', 'blobs'], 'readwrite');
+    tx.objectStore('files').clear();
+    tx.objectStore('notes').clear();
+    tx.objectStore('blobs').clear();
+    tx.commit();
+    currentPath = [];
+    closeSettingsPage();
+    render();
+    showToast('All data erased');
+}
+
+function clearAllAppData() {
+    const hasPin = !!localStorage.getItem(PIN_KEY);
+    if (hasPin) {
+        showPinVerifyModal('Erase All Data', (verified) => {
+            if (!verified) return;
+            showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
+                if (!confirmed) return;
+                await doEraseAllData();
+            });
+        });
+    } else {
+        showPromptModal('\u26a0\ufe0f No PIN set. Create a 4-digit PIN to authorize erase:', '', async (val) => {
+            if (val === null) return;
+            const pin = val.trim();
+            if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true); return; }
+            localStorage.setItem(PIN_KEY, await hashPin(pin));
+            showToast('PIN saved. Enter it again to confirm erase.');
+            showPinVerifyModal('Confirm Erase All Data', (verified) => {
+                if (!verified) return;
+                showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
+                    if (!confirmed) return;
+                    await doEraseAllData();
+                });
+            });
+        });
+    }
+}
+
+// ============================================================
+// SETTINGS PANEL RENDERERS
 // ============================================================
 
 function renderStoragePanel() {
@@ -2864,287 +3513,6 @@ function initSettingsPage() {
 }
 
 // ============================================================
-// PIN VERIFICATION
-// ============================================================
-
-function showPinVerifyModal(title, callback) {
-    const existing = document.getElementById('pinVerifyModal');
-    if (existing) existing.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'pinVerifyModal';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:20px;';
-    overlay.innerHTML = `
-        <div style="background:#1a1a1a;border:1px solid rgba(239,68,68,0.4);border-radius:24px;padding:28px 24px;width:100%;max-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.7);text-align:center;">
-            <div style="width:48px;height:48px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:1.4rem;">🔒</div>
-            <p style="color:#e2e8f0;font-size:0.95rem;font-weight:700;margin:0 0 6px;font-family:Inter,sans-serif;">${title}</p>
-            <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 20px;font-family:Inter,sans-serif;">Enter your 4-digit PIN to confirm</p>
-            <div id="pinVerifyDots" style="display:flex;justify-content:center;gap:12px;margin-bottom:24px;">
-                ${[0,1,2,3].map(i => `<div id="pvDot${i}" style="width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);transition:all 0.15s;"></div>`).join('')}
-            </div>
-            <div id="pinVerifyGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
-                ${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k => `
-                    <button class="pvKey" data-key="${k}" style="padding:16px 0;border-radius:14px;border:1px solid rgba(255,255,255,${k===''?'0':'0.1'});background:${k===''?'transparent':'rgba(255,255,255,0.06)'};color:#e2e8f0;font-size:1.15rem;font-weight:600;font-family:Inter,sans-serif;cursor:${k===''?'default':'pointer'};pointer-events:${k===''?'none':'auto'};transition:background 0.1s;">${k}</button>
-                `).join('')}
-            </div>
-            <button id="pvCancel" style="width:100%;padding:12px;border-radius:40px;border:1px solid rgba(255,255,255,0.15);background:transparent;color:#94a3b8;cursor:pointer;font-family:Inter,sans-serif;font-size:0.85rem;">Cancel</button>
-        </div>`;
-    document.body.appendChild(overlay);
-
-    let entered = '';
-    const storedPin = localStorage.getItem(PIN_KEY) || '';
-
-    function updateDots() {
-        for (let i = 0; i < 4; i++) {
-            const dot = document.getElementById(`pvDot${i}`);
-            dot.style.background = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.15)';
-            dot.style.borderColor = i < entered.length ? '#ef4444' : 'rgba(255,255,255,0.25)';
-        }
-    }
-
-    function shakeModal() {
-        const box = overlay.querySelector('div');
-        box.style.animation = 'none';
-        box.style.transition = 'transform 0.05s';
-        let count = 0;
-        const interval = setInterval(() => {
-            box.style.transform = count % 2 === 0 ? 'translateX(8px)' : 'translateX(-8px)';
-            count++;
-            if (count > 5) { clearInterval(interval);
-                box.style.transform = ''; }
-        }, 50);
-    }
-
-    overlay.querySelectorAll('.pvKey').forEach(btn => {
-        btn.addEventListener('pointerdown', () => { btn.style.background = 'rgba(255,255,255,0.14)'; });
-        btn.addEventListener('pointerup', () => { btn.style.background = 'rgba(255,255,255,0.06)'; });
-        btn.addEventListener('click', async () => {
-            const k = btn.dataset.key;
-            if (k === '⌫') {
-                entered = entered.slice(0, -1);
-                updateDots();
-            } else if (entered.length < 4 && k !== '') {
-                entered += k;
-                updateDots();
-                if (entered.length === 4) {
-                    const enteredHash = await hashPin(entered);
-                    if (enteredHash === storedPin) {
-                        overlay.remove();
-                        callback(true);
-                    } else {
-                        showToast('Incorrect PIN', true);
-                        entered = '';
-                        updateDots();
-                        shakeModal();
-                    }
-                }
-            }
-        });
-    });
-
-    document.getElementById('pvCancel').onclick = () => { overlay.remove();
-        callback(false); };
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove();
-            callback(false); } });
-}
-
-function promptSetPin(callback) {
-    showPromptModal('Set a 4-digit PIN:', '', async (val) => {
-        if (val === null) { callback(false); return; }
-        const pin = val.trim();
-        if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true);
-            callback(false); return; }
-        localStorage.setItem(PIN_KEY, await hashPin(pin));
-        showToast('PIN saved');
-        callback(true);
-    });
-}
-
-function updatePinStatusUI() {
-    const hasPin = !!localStorage.getItem(PIN_KEY);
-    const sub = document.getElementById('pinStatusSub');
-    const changeCard = document.getElementById('changePinCard');
-    const lockToggle = document.getElementById('appLockToggle');
-    if (sub) sub.textContent = hasPin ? 'PIN is set' : 'Not set';
-    if (changeCard) changeCard.classList.toggle('hidden', !docmanSettings.appLock);
-    if (lockToggle) lockToggle.checked = docmanSettings.appLock;
-}
-
-// ============================================================
-// EXPORT / IMPORT
-// ============================================================
-
-async function exportBackupData() {
-    showToast('Preparing backup…');
-    try {
-        const manifest = {
-            fileSystem,
-            allNotes,
-            deptColors,
-            exportedAt: new Date().toISOString(),
-            version: APP_VERSION,
-            format: 'docman-zip-v1'
-        };
-
-        manifest.fileMetadata = {};
-        for (const path in allFiles) {
-            if (allFiles[path]) {
-                manifest.fileMetadata[path] = allFiles[path].map(f => ({
-                    name: f.name,
-                    type: f.type,
-                    uploadedAt: f.uploadedAt,
-                    favourite: f.favourite || false,
-                    size: f.size || 0
-                }));
-            }
-        }
-
-        const zip = new JSZip();
-        zip.file('manifest.json', JSON.stringify(manifest));
-        const filesFolder = zip.folder('files');
-
-        for (const path in allFiles) {
-            for (const f of (allFiles[path] || [])) {
-                try {
-                    const blob = await loadFileData(path, f.name);
-                    if (blob) {
-                        filesFolder.file(path + '/' + f.name, blob);
-                    } else {
-                        console.warn('No data found for', path, f.name, '— skipping content, metadata only');
-                    }
-                } catch (e) {
-                    console.warn('Failed to read file for backup:', path, f.name, e);
-                }
-            }
-        }
-
-        const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-        const backupFileName = `docman-backup-${Date.now()}.zip`;
-        await nativeDownload(zipBlob, backupFileName);
-        showToast('Backup exported');
-    } catch (err) {
-        console.error('Backup export failed:', err);
-        showToast('Could not export backup', true);
-    }
-}
-
-function importBackupData(file) {
-    (async () => {
-        try {
-            const zip = await JSZip.loadAsync(file);
-            const manifestEntry = zip.file('manifest.json');
-            if (!manifestEntry) { showToast('Invalid backup file', true); return; }
-
-            const manifest = JSON.parse(await manifestEntry.async('string'));
-            if (!manifest.fileSystem) { showToast('Invalid backup file', true); return; }
-
-            showConfirmModal('This will <b>replace all current data</b> with the backup. Continue?', async (ok) => {
-                if (!ok) return;
-
-                showToast('Restoring backup…');
-
-                fileSystem = manifest.fileSystem || {};
-                allNotes = manifest.allNotes || {};
-                deptColors = manifest.deptColors || {};
-                allFiles = {};
-
-                if (manifest.fileMetadata) {
-                    for (const path in manifest.fileMetadata) {
-                        if (!manifest.fileMetadata[path]) continue;
-                        allFiles[path] = [];
-                        for (const f of manifest.fileMetadata[path]) {
-                            const zipEntry = zip.file('files/' + path + '/' + f.name);
-                            let fileData = null;
-                            if (zipEntry) {
-                                try {
-                                    fileData = await zipEntry.async('blob');
-                                } catch (e) {
-                                    console.warn('Failed to read file from backup:', path, f.name, e);
-                                }
-                            }
-                            allFiles[path].push({
-                                name: f.name,
-                                type: f.type || 'application/octet-stream',
-                                uploadedAt: f.uploadedAt || Date.now(),
-                                favourite: f.favourite || false,
-                                size: f.size || (fileData ? fileData.size : 0),
-                                fileData: fileData,
-                                _hasData: !!fileData,
-                                _isBase64: false
-                            });
-                        }
-                    }
-                }
-
-                await saveFolderStructure();
-                await saveDeptColors();
-                await saveAllNotesToDB();
-                await saveAllFilesToDB();
-                await loadAllFileMetadata();
-
-                currentPath = [];
-                closeSettingsPage();
-                render();
-                showToast('Data imported successfully');
-            });
-        } catch (err) {
-            console.error('Backup import failed:', err);
-            showToast('Failed to read backup: ' + err.message, true);
-        }
-    })();
-}
-
-// ============================================================
-// CLEAR ALL DATA
-// ============================================================
-
-async function doEraseAllData() {
-    fileSystem = {};
-    allFiles = {};
-    allNotes = {};
-    deptColors = {};
-    await saveFolderStructure();
-    await saveDeptColors();
-    const tx = db.transaction(['files', 'notes', 'blobs'], 'readwrite');
-    tx.objectStore('files').clear();
-    tx.objectStore('notes').clear();
-    tx.objectStore('blobs').clear();
-    tx.commit();
-    currentPath = [];
-    closeSettingsPage();
-    render();
-    showToast('All data erased');
-}
-
-function clearAllAppData() {
-    const hasPin = !!localStorage.getItem(PIN_KEY);
-    if (hasPin) {
-        showPinVerifyModal('Erase All Data', (verified) => {
-            if (!verified) return;
-            showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
-                if (!confirmed) return;
-                await doEraseAllData();
-            });
-        });
-    } else {
-        showPromptModal('\u26a0\ufe0f No PIN set. Create a 4-digit PIN to authorize erase:', '', async (val) => {
-            if (val === null) return;
-            const pin = val.trim();
-            if (!/^\d{4}$/.test(pin)) { showToast('PIN must be exactly 4 digits', true); return; }
-            localStorage.setItem(PIN_KEY, await hashPin(pin));
-            showToast('PIN saved. Enter it again to confirm erase.');
-            showPinVerifyModal('Confirm Erase All Data', (verified) => {
-                if (!verified) return;
-                showConfirmModal('This will permanently delete <b>all files, notes and departments</b>. This cannot be undone. Continue?', async (confirmed) => {
-                    if (!confirmed) return;
-                    await doEraseAllData();
-                });
-            });
-        });
-    }
-}
-
-// ============================================================
 // SHOW INFO
 // ============================================================
 
@@ -3572,3 +3940,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ============================================================
 // END OF FILE
 // ============================================================
+```
