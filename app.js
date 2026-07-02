@@ -1,21 +1,15 @@
 ```javascript
 // ============================================================
 // DOCMAN - Document Manager
-// Version: 1.0.0
+// Version: 1.0.3 - LARGE PDF FIX
 // ============================================================
 
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 
 const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY = 'docman_recents_v1';
 const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
 const PIN_KEY = 'docman_pin_v2';
-// Set right before handing a file to the internal EmbedPDF viewer, cleared
-// as soon as that open resolves (success or clean failure). A stale value
-// found on the NEXT app load means the engine crashed the whole page mid-open
-// last time -- see the crash-recovery check in handlePdfFile(). Deliberately
-// NOT namespaced under SETTINGS_KEY: it must survive independent of settings
-// and be trivial to JSON.parse defensively.
 const PDF_CRASH_FLAG_KEY = 'docman_pdf_open_pending_v1';
 
 // ============================================================
@@ -185,8 +179,8 @@ const defaultSettings = {
     enableAnimations: true,
     enableParticles: true,
     theme: 'dark',
-    pdfOpen: 'docman',  // Internal by default
-    pdfThreshold: 50,   // 50MB threshold
+    pdfOpen: 'docman',
+    pdfThreshold: 25,  // 25MB threshold for better stability
     showRecents: true,
     showFavorites: true,
     recentsLimit: 20,
@@ -334,7 +328,6 @@ async function saveAllNotesToDB() {
 
 async function loadFileData(folderPath, fileName) {
     try {
-        // Try the dedicated blobs store first
         const blobId = folderPath + '/' + fileName;
         const blobTx = db.transaction('blobs', 'readonly');
         const blobResult = await new Promise((resolve, reject) => {
@@ -346,7 +339,6 @@ async function loadFileData(folderPath, fileName) {
             return blobResult.blob;
         }
 
-        // Fall back to files store (legacy base64 or old inline blob)
         const tx = db.transaction('files', 'readonly');
         const result = await new Promise((resolve, reject) => {
             const req = tx.objectStore('files').get(folderPath);
@@ -383,7 +375,6 @@ async function loadFileData(folderPath, fileName) {
 
 async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
     try {
-        // Write blob to dedicated store
         const blobId = folderPath + '/' + fileName;
         const blobTx = db.transaction('blobs', 'readwrite');
         blobTx.objectStore('blobs').put({ blobId, blob });
@@ -392,7 +383,6 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
             blobTx.onerror = () => reject(blobTx.error);
         });
 
-        // Update files record — strip blob/dataUrl, keep only metadata
         const fileTx = db.transaction('files', 'readwrite');
         const fileStore = fileTx.objectStore('files');
         const result = await new Promise((resolve, reject) => {
@@ -419,7 +409,6 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
             fileTx.onerror = () => reject(fileTx.error);
         });
 
-        // Update in-memory allFiles
         if (allFiles[folderPath]) {
             const idx = allFiles[folderPath].findIndex(f => f.name === fileName);
             if (idx !== -1) {
@@ -868,23 +857,9 @@ function closeNoteModal() {
 // FILE VIEWING / OPENING
 // ============================================================
 
-// ============================================================
-// GESTURE-SAFE PDF OPEN (Samsung Internet fix)
-// ============================================================
-// Samsung Internet drops the user-gesture trust after any await.
-// So for external PDF mode we must call navigator.share() synchronously
-// on the tap, before any async DB reads.
-// Strategy:
-//   If blob is already in allFiles memory → share immediately (synchronous).
-//   If blob needs to be loaded from DB → share() with a Promise trick:
-//     We call share() with a File whose data is loaded async. This works
-//     because the share() call itself is synchronous (gesture is preserved)
-//     even if the file data resolves later.
-
 async function openFileWithGesture(fileEntry, folderPath) {
     trackRecentFile(fileEntry.name);
 
-    // If blob is already in memory, share immediately — zero async gap
     if (fileEntry.fileData instanceof Blob) {
         const file = new File([fileEntry.fileData], fileEntry.name, { type: 'application/pdf' });
         if (navigator.share) {
@@ -893,15 +868,12 @@ async function openFileWithGesture(fileEntry, folderPath) {
                 return;
             } catch (e) {
                 if (e.name === 'AbortError') return;
-                // fall through to normal openFile
             }
         }
         await handlePdfFile(fileEntry.fileData, fileEntry.name);
         return;
     }
 
-    // Blob not in memory yet — load from DB then share
-    // We still call navigator.share() as fast as possible after load
     const fileData = await loadFileData(folderPath, fileEntry.name);
     if (!fileData) { showToast('File not found or could not be loaded', true); return; }
 
@@ -915,7 +887,6 @@ async function openFileWithGesture(fileEntry, folderPath) {
         }
     }
 
-    // Fallback: blob URL
     const url = URL.createObjectURL(fileData);
     const a = document.createElement('a');
     a.href = url;
@@ -992,7 +963,7 @@ function closeImageViewer() {
 }
 
 // ============================================================
-// PDF HANDLING - OPTIMIZED FOR LARGE PDFs
+// PDF HANDLING - COMPLETE FIX FOR LARGE PDFs
 // ============================================================
 
 let isSharing = false;
@@ -1001,24 +972,7 @@ let shareTimeout = null;
 async function handlePdfFile(fileData, fileName) {
     let openMode = docmanSettings.pdfOpen || 'docman';
 
-    // ------------------------------------------------------------------
-    // CRASH RECOVERY: the internal EmbedPDF/PDFium engine can hard-crash
-    // the renderer (blank white page, whole app/tab restarts) on PDFs
-    // whose *content* (high-res images, complex vectors, bad fonts) blows
-    // its WASM memory budget -- this isn't correlated with file size, so
-    // no size threshold fully prevents it, and because it's a process
-    // crash, no JS here can catch it in the moment (the watchdog below
-    // only catches HANGS, not crashes -- a crash kills the JS context
-    // before any timer/catch can run).
-    //
-    // What we CAN do: mark "about to open internally" right before we
-    // hand off, and clear that mark as soon as we know the document
-    // opened successfully (or failed cleanly). If DOCMAN reloads and
-    // finds a stale mark left over from last time, that means the last
-    // internal open never got a chance to clear it -- i.e. it crashed.
-    // Auto-fall back to External so the user isn't stuck crash-looping
-    // on the same file, and tell them why.
-    // ------------------------------------------------------------------
+    // CRASH RECOVERY
     if (openMode === 'docman') {
         try {
             const pending = JSON.parse(localStorage.getItem(PDF_CRASH_FLAG_KEY) || 'null');
@@ -1027,35 +981,35 @@ async function handlePdfFile(fileData, fileName) {
                 openMode = 'external';
                 saveSettings();
                 localStorage.removeItem(PDF_CRASH_FLAG_KEY);
-                showToast('Built-in PDF viewer crashed last time opening "' + pending.fileName + '". Switched to External for safety -- you can change this back in Settings.', true);
+                showToast('Built-in PDF viewer crashed last time. Switched to External.', true);
                 await sharePdfExternally(fileData, fileName);
                 return;
             }
-        } catch (e) { /* ignore malformed flag */ }
+        } catch (e) { /* ignore */ }
     }
 
     // ================================================================
-    // SMART SIZE-BASED FALLBACK FOR LARGE PDFs
+    // CRITICAL FIX: AGGRESSIVE SIZE-BASED FALLBACK
     // ================================================================
     const fileSizeMB = fileData.size / (1024 * 1024);
-    const thresholdBytes = (docmanSettings.pdfThreshold || 50) * 1024 * 1024;
+    const thresholdBytes = (docmanSettings.pdfThreshold || 25) * 1024 * 1024;
     
-    // INSTANT FALLBACK for very large files (>50MB or user threshold)
+    // INSTANT FALLBACK for files > threshold
     if (fileData.size >= thresholdBytes) {
-        showToast('PDF is ' + fileSizeMB.toFixed(1) + ' MB (over ' + (docmanSettings.pdfThreshold || 50) + ' MB threshold) — opening externally.', false);
+        showToast('PDF is ' + fileSizeMB.toFixed(1) + ' MB (over ' + (docmanSettings.pdfThreshold || 25) + ' MB threshold) — opening externally.', false);
         await sharePdfExternally(fileData, fileName);
         return;
     }
     
-    // PROACTIVE FALLBACK for files >20MB on iOS (WebKit is more sensitive)
-    if (isIOS() && fileData.size > 20 * 1024 * 1024) {
+    // iOS: files > 15MB go external (WebKit is very sensitive)
+    if (isIOS() && fileData.size > 15 * 1024 * 1024) {
         showToast('Large PDF (' + fileSizeMB.toFixed(1) + ' MB) — opening externally for better performance.', false);
         await sharePdfExternally(fileData, fileName);
         return;
     }
     
-    // PROACTIVE FALLBACK for files >30MB on Android (limited memory)
-    if (isAndroid() && fileData.size > 30 * 1024 * 1024) {
+    // Android: files > 20MB go external
+    if (isAndroid() && fileData.size > 20 * 1024 * 1024) {
         showToast('Large PDF (' + fileSizeMB.toFixed(1) + ' MB) — opening externally for better performance.', false);
         await sharePdfExternally(fileData, fileName);
         return;
@@ -1067,16 +1021,10 @@ async function handlePdfFile(fileData, fileName) {
         return;
     }
 
-    // iOS users can now choose - removed forced external
-    if (isIOS() && openMode === 'docman' && !window._iosEmbedPdfWarned) {
-        window._iosEmbedPdfWarned = true;
-        showToast('Built-in viewer may be slower on iOS. Switch to "External" in Settings if you experience issues.', false);
-    }
-
     if (openMode === 'docman') {
-        // Check if file is likely to cause crash based on size
-        if (fileData.size > 15 * 1024 * 1024) {
-            showToast('Opening large PDF (' + fileSizeMB.toFixed(1) + ' MB) — may take a moment...', false);
+        // For medium files (8-15MB), warn user
+        if (fileData.size > 8 * 1024 * 1024) {
+            showToast('Opening PDF (' + fileSizeMB.toFixed(1) + ' MB) — may take a moment...', false);
         }
         openPdfViewer(fileData, fileName);
     } else {
@@ -1085,10 +1033,6 @@ async function handlePdfFile(fileData, fileName) {
 }
 
 function isIOS() {
-    // Covers iPhone/iPad Safari and Chrome-for-iOS (which is WebKit under the
-    // hood too -- Apple requires all iOS browsers to use WebKit). Also catches
-    // iPadOS 13+ which reports as "Macintosh" but exposes touch support, unlike
-    // real Macs.
     return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
@@ -1102,33 +1046,19 @@ function isSamsungBrowser() {
 }
 
 async function sharePdfExternally(fileData, fileName) {
-    // ── Android ───────────────────────────────────────────────────────────────
-    // blob: URLs are origin-scoped; default Android browsers treat any attempt
-    // to open one in a new tab as a download.  The only approach that reliably
-    // triggers the OS "Open with…" chooser across Chrome, Samsung Internet,
-    // MIUI browser, and standalone-PWA mode is Web Share API with a File object.
-    // We try it unconditionally (not guarded by canShare) because some browsers
-    // report canShare=false yet still execute share() correctly.
     if (isAndroid()) {
         const file = new File([fileData], fileName, { type: 'application/pdf' });
 
-        // Try Web Share API — works on Chrome, Samsung Internet 12+, and PWA mode
         if (navigator.share) {
             try {
                 await navigator.share({ files: [file], title: fileName });
                 return;
             } catch (err) {
-                if (err.name === 'AbortError') return; // user dismissed
-                // NotAllowedError, DataError, etc — fall through to blob URL
+                if (err.name === 'AbortError') return;
                 console.warn('navigator.share failed:', err.name, err.message);
             }
         }
 
-        // Last resort: open blob URL in new tab.
-        // On Chrome browser (non-standalone) this shows "Open with…".
-        // On default browser it may download — but there is no better option
-        // if share() is completely unavailable.
-        // In Capacitor WebView, blob URLs in new tabs don't work — use nativeDownload
         if (window.Capacitor) {
             await nativeDownload(fileData, fileName);
         } else {
@@ -1149,7 +1079,6 @@ async function sharePdfExternally(fileData, fileName) {
         return;
     }
 
-    // ── iOS / Desktop ─────────────────────────────────────────────────────────
     try {
         isSharing = true;
         const file = new File([fileData], fileName, { type: 'application/pdf' });
@@ -1217,7 +1146,6 @@ async function nativeDownload(blob, fileName) {
         }
     }
 
-    // PWA / browser fallback
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1247,11 +1175,10 @@ function openPdfViewer(fileData, fileName) {
         existing.remove();
     }
 
-    // Check file size before opening - if too large, force external
     const fileSizeMB = fileData.size / (1024 * 1024);
     
-    // If file is extremely large (>80MB), don't even try internal
-    if (fileSizeMB > 80) {
+    // CRITICAL: If file > 20MB, don't even try internal viewer
+    if (fileSizeMB > 20) {
         showToast('PDF is ' + fileSizeMB.toFixed(1) + ' MB — too large for internal viewer. Opening externally.', true);
         sharePdfExternally(fileData, fileName);
         return;
@@ -1265,8 +1192,7 @@ function openPdfViewer(fileData, fileName) {
     viewer.className = 'pdf-viewer';
     viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
 
-    // Add memory indicator for large files
-    const memoryWarning = fileSizeMB > 25 ? 
+    const memoryWarning = fileSizeMB > 10 ? 
         `<span style="color:#f59e0b;font-size:0.7rem;margin-right:8px;">⚠️ ${fileSizeMB.toFixed(1)}MB</span>` : '';
 
     viewer.innerHTML = `
@@ -1291,14 +1217,13 @@ function openPdfViewer(fileData, fileName) {
             <div id="pdfLoadingMsg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-family:Inter,sans-serif;font-size:0.9rem;pointer-events:none;">
                 <div style="text-align:center;">
                     <div style="display:inline-block;width:30px;height:30px;border:3px solid rgba(255,255,255,0.1);border-top:3px solid #3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;"></div>
-                    <div>Loading PDF${fileSizeMB > 10 ? ' (' + fileSizeMB.toFixed(1) + ' MB)' : ''}…</div>
-                    ${fileSizeMB > 15 ? '<div style="font-size:0.7rem;color:#6b7280;margin-top:6px;">Large file — please be patient</div>' : ''}
+                    <div>Loading PDF${fileSizeMB > 5 ? ' (' + fileSizeMB.toFixed(1) + ' MB)' : ''}…</div>
+                    ${fileSizeMB > 8 ? '<div style="font-size:0.7rem;color:#6b7280;margin-top:6px;">Large file — please be patient</div>' : ''}
                 </div>
             </div>
         </div>
     `;
 
-    // Add spin animation
     const style = document.createElement('style');
     style.textContent = `
         @keyframes spin {
@@ -1312,7 +1237,6 @@ function openPdfViewer(fileData, fileName) {
     viewer._fileName = fileName;
     viewer._fileData = fileData;
 
-    // Arm the crash-recovery flag
     try {
         localStorage.setItem(PDF_CRASH_FLAG_KEY, JSON.stringify({ fileName: fileName, time: Date.now(), size: fileData.size }));
     } catch (e) { /* ignore */ }
@@ -1330,10 +1254,9 @@ function openPdfViewer(fileData, fileName) {
 }
 
 // ============================================================
-// EmbedPDF (PDFium/WASM) rendering engine - ENHANCED
+// EmbedPDF rendering engine - SIMPLIFIED FOR STABILITY
 // ============================================================
 
-// Vendored locally in vendor/embedpdf/ (embedpdf.js + pdfium.wasm)
 const EMBEDPDF_LOCAL = './vendor/embedpdf/embedpdf.js';
 let embedPdfModulePromise = null;
 
@@ -1342,7 +1265,7 @@ function loadEmbedPdfModule(forceRetry) {
     if (!embedPdfModulePromise) {
         const importPromise = import(/* webpackIgnore: true */ EMBEDPDF_LOCAL);
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('EmbedPDF load timed out')), 30000);
+            setTimeout(() => reject(new Error('EmbedPDF load timed out')), 20000);
         });
         embedPdfModulePromise = Promise.race([importPromise, timeoutPromise]).catch(err => {
             embedPdfModulePromise = null;
@@ -1352,7 +1275,6 @@ function loadEmbedPdfModule(forceRetry) {
     return embedPdfModulePromise;
 }
 
-// Warm up the PDF engine in the background
 (function preloadEmbedPdf() {
     const warm = () => { loadEmbedPdfModule().catch(() => {}); };
     if ('requestIdleCallback' in window) {
@@ -1368,17 +1290,21 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
     const viewerEl = document.getElementById('pdfViewer');
     if (!container || !viewerEl) return;
 
-    // Enhanced loading message for large files
     const fileSizeMB = fileData.size / (1024 * 1024);
     
-    if (loadingMsg && fileSizeMB > 10) {
-        loadingMsg.innerHTML = `
-            <div style="text-align:center;">
-                <div style="display:inline-block;width:30px;height:30px;border:3px solid rgba(255,255,255,0.1);border-top:3px solid #3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;"></div>
-                <div>Loading PDF (${fileSizeMB.toFixed(1)} MB)…</div>
-                <div style="font-size:0.7rem;color:#6b7280;margin-top:6px;">This may take a moment</div>
-            </div>
-        `;
+    // CRITICAL: Don't even try for files > 20MB
+    if (fileSizeMB > 20) {
+        if (loadingMsg) {
+            loadingMsg.innerHTML = `
+                <div style="text-align:center;padding:0 24px;">
+                    <div style="color:#f59e0b;font-size:1rem;margin-bottom:8px;">⚠️ File too large for internal viewer</div>
+                    <div style="color:#94a3b8;font-size:0.85rem;margin-bottom:12px;">${fileSizeMB.toFixed(1)} MB — internal viewer limit is 20 MB</div>
+                    <button onclick="sharePdfExternally(${fileData}, '${fileName}')" style="background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.4);border-radius:8px;color:#3b82f6;padding:10px 24px;font-size:0.9rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;">Open Externally</button>
+                </div>
+            `;
+            loadingMsg.style.pointerEvents = 'auto';
+        }
+        return;
     }
 
     let stage = 'starting';
@@ -1388,7 +1314,7 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
 
     function setStage(s) {
         stage = s;
-        console.log('[PDF watchdog] stage:', s, '-', fileName, 'size:', fileSizeMB.toFixed(1) + 'MB');
+        console.log('[PDF] stage:', s, '-', fileName);
     }
 
     function clearWatchdog() {
@@ -1401,11 +1327,9 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
         if (!document.body.contains(viewerEl)) return;
         
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        const msgEl = document.getElementById('pdfLoadingMsg') || loadingMsg;
-        const host = msgEl && document.body.contains(msgEl) ? msgEl : container;
+        const host = document.getElementById('pdfLoadingMsg') || loadingMsg;
         if (!host) return;
         
-        console.warn('[PDF watchdog] stuck at stage:', stageAtTimeout, '-', fileName, 'elapsed:', elapsed + 's');
         host.style.pointerEvents = 'auto';
         host.style.position = 'absolute';
         host.style.inset = '0';
@@ -1416,34 +1340,25 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
         host.innerHTML = `
             <div style="text-align:center;padding:0 24px;max-width:340px;">
                 <div style="color:#e2e8f0;font-family:Inter,sans-serif;font-size:0.9rem;margin-bottom:6px;">
-                    ${fileSizeMB > 15 ? '⚠️ Large PDF is taking too long to open.' : 'This PDF is taking too long to open.'}
+                    ⏱️ PDF taking too long to open
                 </div>
                 <div style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.75rem;margin-bottom:4px;">Size: ${fileSizeMB.toFixed(1)} MB</div>
                 <div style="color:#6b7280;font-family:Inter,sans-serif;font-size:0.7rem;margin-bottom:16px;">Stuck at: ${escapeHtml(stageAtTimeout)} (${elapsed}s)</div>
                 <div>
-                    <button id="pdfWatchdogRetryBtn" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Retry</button>
-                    <button id="pdfWatchdogExternalBtn" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Open Externally</button>
+                    <button id="pdfWatchdogExternalBtn" style="background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.4);border-radius:8px;color:#3b82f6;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Open Externally</button>
                 </div>
             </div>
         `;
         
-        const retryBtn = document.getElementById('pdfWatchdogRetryBtn');
-        if (retryBtn) retryBtn.addEventListener('click', function() {
-            if (viewerEl._embedPdfInstance && viewerEl._embedPdfInstance.destroy) {
-                try { viewerEl._embedPdfInstance.destroy(); } catch (e) {}
-            }
-            container.innerHTML = '';
-            renderPdfWithEmbedPdf(fileData, docId, fileName, true);
-        });
-        
         const externalBtn = document.getElementById('pdfWatchdogExternalBtn');
-        if (externalBtn) externalBtn.addEventListener('click', function() {
-            sharePdfExternally(fileData, fileName);
-        });
+        if (externalBtn) {
+            externalBtn.addEventListener('click', function() {
+                sharePdfExternally(fileData, fileName);
+            });
+        }
     }
 
-    // Adjust timeout based on file size
-    const timeoutMs = Math.min(60000, Math.max(20000, fileSizeMB * 1000 + 15000));
+    const timeoutMs = Math.min(30000, Math.max(15000, fileSizeMB * 800 + 10000));
     function armWatchdog(ms) {
         clearWatchdog();
         watchdogTimer = setTimeout(function() { showStuckUI(stage); }, ms || timeoutMs);
@@ -1451,8 +1366,7 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
 
     armWatchdog(timeoutMs);
 
-    // Read file bytes
-    setStage('loading engine module + reading file bytes');
+    setStage('loading engine + reading file');
     
     const loadModule = loadEmbedPdfModule(forceRetry);
     const readBuffer = fileData.arrayBuffer();
@@ -1462,11 +1376,10 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
         const arrayBuffer = results[1];
         if (!document.body.contains(viewerEl)) { clearWatchdog(); return; }
 
-        setStage('initializing PDFium engine (wasm)');
+        setStage('initializing PDFium');
         const EmbedPDF = mod.default;
         const ZoomMode = mod.ZoomMode;
 
-        // --- OPTIMIZED CONFIGURATION ---
         const instance = EmbedPDF.init({
             type: 'container',
             target: container,
@@ -1486,13 +1399,13 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
         });
         
         viewerEl._embedPdfInstance = instance;
-        setStage('waiting for plugin registry');
+        setStage('waiting for registry');
 
         instance.registry.then(function(registry) {
             if (loadingMsg) loadingMsg.remove();
             if (!document.body.contains(viewerEl)) { clearWatchdog(); return; }
 
-            setStage('opening document (PDFium parsing)');
+            setStage('opening document');
             armWatchdog(timeoutMs);
 
             const docManagerApi = registry.getPlugin('document-manager')?.provides();
@@ -1519,15 +1432,14 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
                                 settled = true;
                                 clearWatchdog();
                                 clearPdfCrashFlag();
-                                console.error('[PDF watchdog] document-manager reported an error:', errInfo);
-                                showStuckUI('engine reported an error opening the document');
+                                console.error('[PDF] document-manager error:', errInfo);
+                                showStuckUI('engine error');
                             }
                         });
                     }
                 }
             }
 
-            // Zoom controls
             const zoomApi = registry.getPlugin('zoom')?.provides()?.forDocument(docId);
             if (!zoomApi) return;
 
@@ -1555,34 +1467,27 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
         settled = true;
         clearWatchdog();
         clearPdfCrashFlag();
-        console.error('EmbedPDF failed to load', err);
+        console.error('EmbedPDF failed:', err);
         
-        // For large files, automatically fallback to external
-        if (fileSizeMB > 15) {
-            showToast('PDF engine failed for large file. Opening externally...', true);
+        // Auto-fallback to external for any error
+        if (fileSizeMB > 5) {
+            showToast('PDF engine failed. Opening externally...', true);
             sharePdfExternally(fileData, fileName);
             return;
         }
         
         if (loadingMsg) {
             loadingMsg.style.pointerEvents = 'auto';
-            loadingMsg.innerHTML = '<div style="text-align:center;padding:0 24px;">' +
-                'Could not load the PDF engine. Check your internet connection and try again.' +
-                '<br><button id="pdfEngineRetryBtn" style="margin-top:14px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;">Retry</button>' +
-                '<br><button id="pdfEngineExternalBtn" style="margin-top:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;">Open Externally</button>' +
-                '</div>';
-            const retryBtn = document.getElementById('pdfEngineRetryBtn');
-            if (retryBtn) {
-                retryBtn.addEventListener('click', function() {
-                    renderPdfWithEmbedPdf(fileData, docId, fileName, true);
-                });
-            }
-            const externalBtn = document.getElementById('pdfEngineExternalBtn');
-            if (externalBtn) {
-                externalBtn.addEventListener('click', function() {
-                    sharePdfExternally(fileData, fileName);
-                });
-            }
+            loadingMsg.innerHTML = `
+                <div style="text-align:center;padding:0 24px;">
+                    <div style="color:#e2e8f0;font-family:Inter,sans-serif;font-size:0.9rem;margin-bottom:6px;">❌ Could not load PDF engine</div>
+                    <div style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.75rem;margin-bottom:16px;">${err.message || 'Unknown error'}</div>
+                    <div>
+                        <button onclick="renderPdfWithEmbedPdf(${fileData}, '${docId}', '${fileName}', true)" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Retry</button>
+                        <button onclick="sharePdfExternally(${fileData}, '${fileName}')" style="background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.4);border-radius:8px;color:#3b82f6;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Open Externally</button>
+                    </div>
+                </div>
+            `;
         }
     });
 }
@@ -1617,7 +1522,6 @@ function downloadPdfFromViewer() {
     }
 }
 
-// Expose PDF viewer functions to window
 window.closePdfViewer = closePdfViewer;
 window.downloadPdfFromViewer = downloadPdfFromViewer;
 
@@ -2907,8 +2811,6 @@ async function exportBackupData() {
         zip.file('manifest.json', JSON.stringify(manifest));
         const filesFolder = zip.folder('files');
 
-        // Pull every file's actual content (lazy-loading blobs as needed) into the zip.
-        // Zip entry path mirrors folderPath/fileName so import can match it back to its folder.
         for (const path in allFiles) {
             for (const f of (allFiles[path] || [])) {
                 try {
