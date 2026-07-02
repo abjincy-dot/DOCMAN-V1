@@ -1001,11 +1001,33 @@ async function handlePdfFile(fileData, fileName) {
         return;
     }
 
+    // On iOS/iPadOS, EmbedPDF's PDFium WASM engine has been confirmed (on-device,
+    // across both Safari and Chrome-for-iOS -- which both use WebKit under Apple's
+    // platform rules) to crash the whole WebKit renderer process outright, not just
+    // hang. This isn't something fixable from here: it's WebKit's WASM compiler
+    // choking on the pdfium.wasm module, and every iOS browser hits the same
+    // engine. Native PDFKit (Files/Preview/share-sheet) opens the exact same
+    // files instantly, so route iOS straight there instead of ever touching
+    // EmbedPDF, regardless of the user's docman/external viewer setting.
+    if (isIOS()) {
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
+
     if (openMode === 'docman') {
         openPdfViewer(fileData, fileName);
     } else {
         await sharePdfExternally(fileData, fileName);
     }
+}
+
+function isIOS() {
+    // Covers iPhone/iPad Safari and Chrome-for-iOS (which is WebKit under the
+    // hood too -- Apple requires all iOS browsers to use WebKit). Also catches
+    // iPadOS 13+ which reports as "Macintosh" but exposes touch support, unlike
+    // real Macs.
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
 function isAndroid() {
@@ -1270,16 +1292,80 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
         loadingMsg.textContent = 'Loading PDF…';
     }
 
+    // ------------------------------------------------------------------
+    // Watchdog: EmbedPDF has repeatedly hung silently at different internal
+    // stages (CDN fetches, blob-URL worker fetches) with zero error surfaced
+    // to us. Rather than keep guessing at bundle internals blind, track which
+    // stage we're in and, if nothing happens for too long, show that stage on
+    // screen (and log it) instead of an infinite spinner, plus a one-tap
+    // escape hatch to open the file in an external PDF app.
+    // ------------------------------------------------------------------
+    let stage = 'starting';
+    let watchdogTimer = null;
+    let settled = false;
+
+    function setStage(s) {
+        stage = s;
+        console.log('[PDF watchdog] stage:', s, '-', fileName);
+    }
+
+    function clearWatchdog() {
+        if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
+    }
+
+    function showStuckUI(stageAtTimeout) {
+        if (settled) return;
+        if (!document.body.contains(viewerEl)) return;
+        const msgEl = document.getElementById('pdfLoadingMsg') || loadingMsg;
+        const host = msgEl && document.body.contains(msgEl) ? msgEl : container;
+        if (!host) return;
+        console.warn('[PDF watchdog] stuck at stage:', stageAtTimeout, '-', fileName);
+        host.style.pointerEvents = 'auto';
+        host.style.position = 'absolute';
+        host.style.inset = '0';
+        host.style.display = 'flex';
+        host.style.alignItems = 'center';
+        host.style.justifyContent = 'center';
+        host.style.background = '#2a2a2a';
+        host.innerHTML = '<div style="text-align:center;padding:0 24px;max-width:340px;">' +
+            '<div style="color:#e2e8f0;font-family:Inter,sans-serif;font-size:0.9rem;margin-bottom:6px;">This PDF is taking too long to open.</div>' +
+            '<div style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.75rem;margin-bottom:16px;">Stuck at: ' + escapeHtml(stageAtTimeout) + '</div>' +
+            '<button id="pdfWatchdogRetryBtn" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Retry</button>' +
+            '<button id="pdfWatchdogExternalBtn" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Open Externally</button>' +
+            '</div>';
+        const retryBtn = document.getElementById('pdfWatchdogRetryBtn');
+        if (retryBtn) retryBtn.addEventListener('click', function() {
+            if (viewerEl._embedPdfInstance && viewerEl._embedPdfInstance.destroy) {
+                try { viewerEl._embedPdfInstance.destroy(); } catch (e) {}
+            }
+            container.innerHTML = '';
+            renderPdfWithEmbedPdf(fileData, docId, fileName, true);
+        });
+        const externalBtn = document.getElementById('pdfWatchdogExternalBtn');
+        if (externalBtn) externalBtn.addEventListener('click', function() {
+            sharePdfExternally(fileData, fileName);
+        });
+    }
+
+    function armWatchdog(ms) {
+        clearWatchdog();
+        watchdogTimer = setTimeout(function() { showStuckUI(stage); }, ms);
+    }
+
+    armWatchdog(15000); // engine module + wasm init + plugin registry
+
     // Read the file into an ArrayBuffer up front. EmbedPDF's PDFium worker
     // can't fetch blob: URLs on Android WebView, so we feed it raw bytes via
     // openDocumentBuffer (documentManager: { initialDocuments: [{ buffer }] })
     // instead of openDocumentUrl.
+    setStage('loading engine module + reading file bytes');
     Promise.all([loadEmbedPdfModule(forceRetry), fileData.arrayBuffer()]).then(function(results) {
         const mod = results[0];
         const arrayBuffer = results[1];
         // Bail out silently if the viewer was closed while the module was loading.
-        if (!document.body.contains(viewerEl)) return;
+        if (!document.body.contains(viewerEl)) { clearWatchdog(); return; }
 
+        setStage('initializing PDFium engine (wasm)');
         const EmbedPDF = mod.default;
         const ZoomMode = mod.ZoomMode;
 
@@ -1320,6 +1406,12 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
             // that, so disable the fallback entirely (missing glyphs render as
             // tofu boxes instead, but the document loads).
             fontFallback: null,
+            // Two more fire-and-forget Google Fonts CDN fetches (UI chrome font,
+            // signature-tool script font) that don't block anything today, but
+            // shouldn't be reaching out to the network at all in an offline app.
+            // Explicit stylesheetUrl:null keeps the feature (default local
+            // fonts still apply) without ever touching fonts.googleapis.com.
+            fonts: { ui: { stylesheetUrl: null }, signature: { stylesheetUrl: null } },
             stamp: { manifests: [] },
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
             documentManager: {
@@ -1334,10 +1426,50 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
             disabledCategories: ['document-open', 'document-close', 'zoom']
         });
         viewerEl._embedPdfInstance = instance;
+        setStage('waiting for plugin registry');
 
         instance.registry.then(function(registry) {
             if (loadingMsg) loadingMsg.remove();
-            if (!document.body.contains(viewerEl)) return;
+            if (!document.body.contains(viewerEl)) { clearWatchdog(); return; }
+
+            // Registry ready means the engine/plugins started up fine. Now
+            // watch specifically for THIS document finishing (or failing) --
+            // this is the stage that was hanging on "Loading document...".
+            setStage('opening document (PDFium parsing)');
+            armWatchdog(15000);
+
+            const docManagerApi = registry.getPlugin('document-manager')?.provides();
+            if (docManagerApi) {
+                if (docManagerApi.isDocumentOpen && docManagerApi.isDocumentOpen(docId)) {
+                    settled = true;
+                    clearWatchdog();
+                    setStage('document open');
+                } else {
+                    if (docManagerApi.onDocumentOpened) {
+                        docManagerApi.onDocumentOpened(function(opened) {
+                            if (opened && opened.documentId === docId) {
+                                settled = true;
+                                clearWatchdog();
+                                setStage('document open');
+                            }
+                        });
+                    }
+                    if (docManagerApi.onDocumentError) {
+                        docManagerApi.onDocumentError(function(errInfo) {
+                            if (errInfo && errInfo.documentId === docId) {
+                                settled = true;
+                                clearWatchdog();
+                                console.error('[PDF watchdog] document-manager reported an error:', errInfo);
+                                showStuckUI('engine reported an error opening the document');
+                            }
+                        });
+                    }
+                }
+            } else {
+                // Couldn't get the document-manager API at all -- fall back to
+                // trusting the existing 15s watchdog we just armed.
+                console.warn('[PDF watchdog] document-manager plugin API unavailable');
+            }
 
             const zoomApi = registry.getPlugin('zoom')?.provides()?.forDocument(docId);
             if (!zoomApi) return;
@@ -1363,6 +1495,8 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
             if (fitPageBtn) fitPageBtn.addEventListener('click', function() { zoomApi.requestZoom(ZoomMode.FitPage); });
         });
     }).catch(function(err) {
+        settled = true;
+        clearWatchdog();
         console.error('EmbedPDF failed to load', err);
         if (loadingMsg) {
             loadingMsg.style.pointerEvents = 'auto';
