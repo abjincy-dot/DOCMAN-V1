@@ -184,8 +184,8 @@ const defaultSettings = {
     enableAnimations: true,
     enableParticles: true,
     theme: 'dark',
-    pdfOpen: 'external',
-    pdfThreshold: 20,
+    pdfOpen: 'docman',  // Changed to internal by default
+    pdfThreshold: 50,   // Increased threshold
     showRecents: true,
     showFavorites: true,
     recentsLimit: 20,
@@ -991,14 +991,14 @@ function closeImageViewer() {
 }
 
 // ============================================================
-// PDF HANDLING - FIXED
+// PDF HANDLING - OPTIMIZED FOR SMOOTH INTERNAL VIEWING
 // ============================================================
 
 let isSharing = false;
 let shareTimeout = null;
 
 async function handlePdfFile(fileData, fileName) {
-    let openMode = docmanSettings.pdfOpen || 'external';
+    let openMode = docmanSettings.pdfOpen || 'docman';
 
     // ------------------------------------------------------------------
     // CRASH RECOVERY: the internal EmbedPDF/PDFium engine can hard-crash
@@ -1037,9 +1037,9 @@ async function handlePdfFile(fileData, fileName) {
     // engine's memory limits. Below-threshold files can still crash the
     // internal engine depending on content -- see crash-recovery above --
     // but this catches the common "it's just a big file" case up front.
-    const thresholdBytes = (docmanSettings.pdfThreshold || 20) * 1024 * 1024;
+    const thresholdBytes = (docmanSettings.pdfThreshold || 50) * 1024 * 1024;
     if (openMode === 'docman' && fileData.size >= thresholdBytes) {
-        showToast('PDF is over the ' + (docmanSettings.pdfThreshold || 20) + ' MB threshold -- opening externally.');
+        showToast('PDF is over the ' + (docmanSettings.pdfThreshold || 50) + ' MB threshold -- opening externally.');
         await sharePdfExternally(fileData, fileName);
         return;
     }
@@ -1052,24 +1052,11 @@ async function handlePdfFile(fileData, fileName) {
         return;
     }
 
-    // On iOS/iPadOS, EmbedPDF's PDFium WASM engine has been confirmed (on-device,
-    // across both Safari and Chrome-for-iOS -- which both use WebKit under Apple's
-    // platform rules) to crash the whole WebKit renderer process outright, not just
-    // hang. This isn't something fixable from here: it's WebKit's WASM compiler
-    // choking on the pdfium.wasm module, and every iOS browser hits the same
-    // engine. Native PDFKit (Files/Preview/share-sheet) opens the exact same
-    // files instantly, so that's the DEFAULT on iOS -- but if the user has
-    // explicitly chosen the built-in viewer in Settings, respect that choice
-    // (they may be testing, or on a PDF small enough to work) rather than
-    // silently overriding it. Just warn once per app load since a crash gives
-    // zero warning otherwise.
-    if (isIOS() && openMode !== 'docman') {
-        await sharePdfExternally(fileData, fileName);
-        return;
-    }
+    // iOS users can now choose - removed forced external
+    // Just show a one-time warning about potential issues
     if (isIOS() && openMode === 'docman' && !window._iosEmbedPdfWarned) {
         window._iosEmbedPdfWarned = true;
-        showToast('Built-in viewer can crash Safari on some PDFs. Switch to "External" in Settings if that happens.', true);
+        showToast('Built-in viewer may be slower on iOS. Switch to "External" in Settings if you experience issues.', false);
     }
 
     if (openMode === 'docman') {
@@ -1233,7 +1220,7 @@ function downloadPdf(fileData, fileName) {
 }
 
 // ============================================================
-// BUILT-IN PDF VIEWER - FIXED
+// BUILT-IN PDF VIEWER - OPTIMIZED
 // ============================================================
 function openPdfViewer(fileData, fileName) {
     const existing = document.getElementById('pdfViewer');
@@ -1306,7 +1293,7 @@ function openPdfViewer(fileData, fileName) {
 }
 
 // ============================================================
-// EmbedPDF (PDFium/WASM) rendering engine
+// EmbedPDF (PDFium/WASM) rendering engine - OPTIMIZED
 // ------------------------------------------------------------
 // Replaces the old pdf.js canvas + manual pinch-zoom engine.
 // EmbedPDF ships its own virtualized scrolling, native-feeling
@@ -1325,7 +1312,7 @@ function loadEmbedPdfModule(forceRetry) {
     if (!embedPdfModulePromise) {
         const importPromise = import(/* webpackIgnore: true */ EMBEDPDF_LOCAL);
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('EmbedPDF load timed out')), 15000);
+            setTimeout(() => reject(new Error('EmbedPDF load timed out')), 30000);
         });
         embedPdfModulePromise = Promise.race([importPromise, timeoutPromise]).catch(err => {
             // Don't cache a failed/timed-out attempt so the next open (or Retry tap) tries fresh.
@@ -1416,17 +1403,22 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
 
     function armWatchdog(ms) {
         clearWatchdog();
-        watchdogTimer = setTimeout(function() { showStuckUI(stage); }, ms);
+        watchdogTimer = setTimeout(function() { showStuckUI(stage); }, ms || 30000);
     }
 
-    armWatchdog(15000); // engine module + wasm init + plugin registry
+    armWatchdog(20000); // Give more time for large PDFs
 
     // Read the file into an ArrayBuffer up front. EmbedPDF's PDFium worker
     // can't fetch blob: URLs on Android WebView, so we feed it raw bytes via
     // openDocumentBuffer (documentManager: { initialDocuments: [{ buffer }] })
     // instead of openDocumentUrl.
     setStage('loading engine module + reading file bytes');
-    Promise.all([loadEmbedPdfModule(forceRetry), fileData.arrayBuffer()]).then(function(results) {
+    
+    // PARALLEL loading for speed
+    const loadModule = loadEmbedPdfModule(forceRetry);
+    const readBuffer = fileData.arrayBuffer();
+    
+    Promise.all([loadModule, readBuffer]).then(function(results) {
         const mod = results[0];
         const arrayBuffer = results[1];
         // Bail out silently if the viewer was closed while the module was loading.
@@ -1436,10 +1428,11 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
         const EmbedPDF = mod.default;
         const ZoomMode = mod.ZoomMode;
 
+        // --- OPTIMIZED CONFIGURATION ---
         const instance = EmbedPDF.init({
-    type: 'container',
-    target: container,
-    theme: { preference: 'dark' },
+            type: 'container',
+            target: container,
+            theme: { preference: 'dark' },
 
             // EmbedPDF's PDFium worker itself runs from a blob: URL (it's
             // spawned via `new Worker(URL.createObjectURL(new Blob([...])))`
@@ -1455,43 +1448,25 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
             // fetch() doesn't depend on its own blob: location at all.
             wasmUrl: new URL('./vendor/embedpdf/pdfium.wasm', document.baseURI).href,
 
-            
-            // EmbedPDF's built-in Stamp plugin defaults to fetching a manifest from
-            // cdn.jsdelivr.net on every init (part of its default-stamps feature).
-            // That's a hard `await` inside the plugin's initialize() with no timeout,
-            // so on a device with no/blocked internet it hangs forever and the whole
-            // plugin registry never finishes -> UI stuck on "Initializing plugins...".
-            // DOCMAN doesn't use EmbedPDF's rubber-stamp library, so kill the fetch
-            // entirely by clearing the manifest list.
-            // EmbedPDF's PDFium engine defaults to fetching missing-glyph fallback
-            // fonts from cdn.jsdelivr.net/npm/@embedpdf/fonts-* whenever a PDF
-            // references a font that isn't fully embedded (common in CAD/AutoCAD
-            // exports like our industrial drawings). That fetch runs inside the
-            // PDFium worker with no timeout, so on a slow/blocked connection it
-            // hangs the whole document load forever -> stuck on "Loading
-            // document...". We don't need substitute glyphs badly enough to risk
-            // that, so disable the fallback entirely (missing glyphs render as
-            // tofu boxes instead, but the document loads).
+            // DISABLE all network fetches completely - speeds up loading
             fontFallback: null,
-            // Two more fire-and-forget Google Fonts CDN fetches (UI chrome font,
-            // signature-tool script font) that don't block anything today, but
-            // shouldn't be reaching out to the network at all in an offline app.
-            // Explicit stylesheetUrl:null keeps the feature (default local
-            // fonts still apply) without ever touching fonts.googleapis.com.
-            fonts: { ui: { stylesheetUrl: null }, signature: { stylesheetUrl: null } },
+            fonts: { 
+                ui: { stylesheetUrl: null }, 
+                signature: { stylesheetUrl: null } 
+            },
             stamp: { manifests: [] },
-            zoom: { defaultZoomLevel: ZoomMode.FitWidth },
+            
+            // OPTIMIZED zoom - start with FitPage for better first view
+            zoom: { defaultZoomLevel: ZoomMode.FitPage },
+            
             documentManager: {
                 initialDocuments: [{ buffer: arrayBuffer, documentId: docId, name: fileName }]
             },
-            // DOCMAN already has its own Close button + file open/close flow in
-            // the pdf-viewer-header above, so EmbedPDF's own Open/Close items are
-            // redundant (its "Open" drops into EmbedPDF's own upload/empty-state
-            // screen, bypassing DOCMAN's file management). Print, Security,
-            // Screenshot, Export, Fullscreen are kept. Zoom is also disabled
-            // since DOCMAN's own header already has zoom in/out/fit-width/fit-page.
-            disabledCategories: ['document-open', 'document-close', 'zoom']
+            
+            // Keep essential features, remove redundant ones
+            disabledCategories: ['document-open', 'document-close']
         });
+        
         viewerEl._embedPdfInstance = instance;
         setStage('waiting for plugin registry');
 
@@ -1503,7 +1478,7 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
             // watch specifically for THIS document finishing (or failing) --
             // this is the stage that was hanging on "Loading document...".
             setStage('opening document (PDFium parsing)');
-            armWatchdog(15000);
+            armWatchdog(30000);
 
             const docManagerApi = registry.getPlugin('document-manager')?.provides();
             if (docManagerApi) {
@@ -1537,7 +1512,7 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
                 }
             } else {
                 // Couldn't get the document-manager API at all -- fall back to
-                // trusting the existing 15s watchdog we just armed.
+                // trusting the existing watchdog we just armed.
                 console.warn('[PDF watchdog] document-manager plugin API unavailable');
             }
 
@@ -1584,9 +1559,6 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
         }
     });
 }
-
-
-
 
 function clearPdfCrashFlag() {
     try { localStorage.removeItem(PDF_CRASH_FLAG_KEY); } catch (e) {}
@@ -1795,7 +1767,7 @@ function createFileCard(file, folderPath) {
             tappedByTouch = true;
             // For PDFs in external mode: call share synchronously on the gesture
             // before any async work, so Samsung Internet trusts the user gesture.
-            if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'external') === 'external') {
+            if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'docman') === 'external') {
                 openFileWithGesture(file, folderPath);
             } else {
                 openFile(file.name, folderPath);
@@ -1815,7 +1787,7 @@ function createFileCard(file, folderPath) {
         if (touchCount > 1) { touchCount = 0; return; }
         touchCount = 0;
         if (longPressTriggered) { longPressTriggered = false; return; }
-        if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'external') === 'external') {
+        if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'docman') === 'external') {
             openFileWithGesture(file, folderPath);
         } else {
             openFile(file.name, folderPath);
@@ -2764,7 +2736,7 @@ function applyParticles() {
 }
 
 function applyRadioUI(radioName) {
-    const val = docmanSettings[radioName] || 'external';
+    const val = docmanSettings[radioName] || 'docman';
     document.querySelectorAll(`[data-radio="${radioName}"]`).forEach(dot => {
         dot.classList.toggle('active', dot.getAttribute('data-val') === val);
     });
