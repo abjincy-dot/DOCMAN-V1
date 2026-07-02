@@ -1007,11 +1007,18 @@ async function handlePdfFile(fileData, fileName) {
     // hang. This isn't something fixable from here: it's WebKit's WASM compiler
     // choking on the pdfium.wasm module, and every iOS browser hits the same
     // engine. Native PDFKit (Files/Preview/share-sheet) opens the exact same
-    // files instantly, so route iOS straight there instead of ever touching
-    // EmbedPDF, regardless of the user's docman/external viewer setting.
-    if (isIOS()) {
+    // files instantly, so that's the DEFAULT on iOS -- but if the user has
+    // explicitly chosen the built-in viewer in Settings, respect that choice
+    // (they may be testing, or on a PDF small enough to work) rather than
+    // silently overriding it. Just warn once per app load since a crash gives
+    // zero warning otherwise.
+    if (isIOS() && openMode !== 'docman') {
         await sharePdfExternally(fileData, fileName);
         return;
+    }
+    if (isIOS() && openMode === 'docman' && !window._iosEmbedPdfWarned) {
+        window._iosEmbedPdfWarned = true;
+        showToast('Built-in viewer can crash Safari on some PDFs. Switch to "External" in Settings if that happens.', true);
     }
 
     if (openMode === 'docman') {
