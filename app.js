@@ -1294,6 +1294,16 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
             // plugin registry never finishes -> UI stuck on "Initializing plugins...".
             // DOCMAN doesn't use EmbedPDF's rubber-stamp library, so kill the fetch
             // entirely by clearing the manifest list.
+            // EmbedPDF's PDFium engine defaults to fetching missing-glyph fallback
+            // fonts from cdn.jsdelivr.net/npm/@embedpdf/fonts-* whenever a PDF
+            // references a font that isn't fully embedded (common in CAD/AutoCAD
+            // exports like our industrial drawings). That fetch runs inside the
+            // PDFium worker with no timeout, so on a slow/blocked connection it
+            // hangs the whole document load forever -> stuck on "Loading
+            // document...". We don't need substitute glyphs badly enough to risk
+            // that, so disable the fallback entirely (missing glyphs render as
+            // tofu boxes instead, but the document loads).
+            fontFallback: null,
             stamp: { manifests: [] },
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
             documentManager: {
