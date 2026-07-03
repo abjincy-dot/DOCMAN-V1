@@ -1,15 +1,21 @@
-
 // ============================================================
 // DOCMAN - Document Manager
-// Version: 1.0.1
+// Version: 1.0.0
 // ============================================================
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY = 'docman_recents_v1';
 const SEARCH_HISTORY_KEY = 'docman_search_history_v1';
 const PIN_KEY = 'docman_pin_v2';
+// Set right before handing a file to the internal EmbedPDF viewer, cleared
+// as soon as that open resolves (success or clean failure). A stale value
+// found on the NEXT app load means the engine crashed the whole page mid-open
+// last time -- see the crash-recovery check in handlePdfFile(). Deliberately
+// NOT namespaced under SETTINGS_KEY: it must survive independent of settings
+// and be trivial to JSON.parse defensively.
+const PDF_CRASH_FLAG_KEY = 'docman_pdf_open_pending_v1';
 
 // ============================================================
 // UTILITY FUNCTIONS
@@ -178,8 +184,8 @@ const defaultSettings = {
     enableAnimations: true,
     enableParticles: true,
     theme: 'dark',
-    pdfOpen: 'external',
-    pdfThreshold: 20,
+    pdfOpen: 'docman',  // Internal by default
+    pdfThreshold: 50,   // 50MB threshold
     showRecents: true,
     showFavorites: true,
     recentsLimit: 20,
@@ -327,6 +333,7 @@ async function saveAllNotesToDB() {
 
 async function loadFileData(folderPath, fileName) {
     try {
+        // Try the dedicated blobs store first
         const blobId = folderPath + '/' + fileName;
         const blobTx = db.transaction('blobs', 'readonly');
         const blobResult = await new Promise((resolve, reject) => {
@@ -338,6 +345,7 @@ async function loadFileData(folderPath, fileName) {
             return blobResult.blob;
         }
 
+        // Fall back to files store (legacy base64 or old inline blob)
         const tx = db.transaction('files', 'readonly');
         const result = await new Promise((resolve, reject) => {
             const req = tx.objectStore('files').get(folderPath);
@@ -374,6 +382,7 @@ async function loadFileData(folderPath, fileName) {
 
 async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
     try {
+        // Write blob to dedicated store
         const blobId = folderPath + '/' + fileName;
         const blobTx = db.transaction('blobs', 'readwrite');
         blobTx.objectStore('blobs').put({ blobId, blob });
@@ -382,6 +391,7 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
             blobTx.onerror = () => reject(blobTx.error);
         });
 
+        // Update files record — strip blob/dataUrl, keep only metadata
         const fileTx = db.transaction('files', 'readwrite');
         const fileStore = fileTx.objectStore('files');
         const result = await new Promise((resolve, reject) => {
@@ -408,6 +418,7 @@ async function cacheFileAsBlob(folderPath, fileName, blob, existingEntry) {
             fileTx.onerror = () => reject(fileTx.error);
         });
 
+        // Update in-memory allFiles
         if (allFiles[folderPath]) {
             const idx = allFiles[folderPath].findIndex(f => f.name === fileName);
             if (idx !== -1) {
@@ -760,23 +771,6 @@ function renameFileInFolder(folderPath, oldName, newName) {
         const idx = allFiles[folderPath].findIndex(f => f.name === oldName);
         if (idx !== -1) {
             allFiles[folderPath][idx].name = newName;
-
-            const oldBlobId = folderPath + '/' + oldName;
-            const newBlobId = folderPath + '/' + newName;
-            try {
-                const tx = db.transaction('blobs', 'readwrite');
-                const store = tx.objectStore('blobs');
-                const req = store.get(oldBlobId);
-                req.onsuccess = () => {
-                    if (req.result) {
-                        store.put({ blobId: newBlobId, blob: req.result.blob });
-                        store.delete(oldBlobId);
-                    }
-                };
-            } catch (e) {
-                console.warn('Failed to migrate blob key on rename:', e);
-            }
-
             saveAllFilesToDB();
             render();
         }
@@ -873,9 +867,23 @@ function closeNoteModal() {
 // FILE VIEWING / OPENING
 // ============================================================
 
+// ============================================================
+// GESTURE-SAFE PDF OPEN (Samsung Internet fix)
+// ============================================================
+// Samsung Internet drops the user-gesture trust after any await.
+// So for external PDF mode we must call navigator.share() synchronously
+// on the tap, before any async DB reads.
+// Strategy:
+//   If blob is already in allFiles memory → share immediately (synchronous).
+//   If blob needs to be loaded from DB → share() with a Promise trick:
+//     We call share() with a File whose data is loaded async. This works
+//     because the share() call itself is synchronous (gesture is preserved)
+//     even if the file data resolves later.
+
 async function openFileWithGesture(fileEntry, folderPath) {
     trackRecentFile(fileEntry.name);
 
+    // If blob is already in memory, share immediately — zero async gap
     if (fileEntry.fileData instanceof Blob) {
         const file = new File([fileEntry.fileData], fileEntry.name, { type: 'application/pdf' });
         if (navigator.share) {
@@ -884,12 +892,15 @@ async function openFileWithGesture(fileEntry, folderPath) {
                 return;
             } catch (e) {
                 if (e.name === 'AbortError') return;
+                // fall through to normal openFile
             }
         }
         await handlePdfFile(fileEntry.fileData, fileEntry.name);
         return;
     }
 
+    // Blob not in memory yet — load from DB then share
+    // We still call navigator.share() as fast as possible after load
     const fileData = await loadFileData(folderPath, fileEntry.name);
     if (!fileData) { showToast('File not found or could not be loaded', true); return; }
 
@@ -903,6 +914,7 @@ async function openFileWithGesture(fileEntry, folderPath) {
         }
     }
 
+    // Fallback: blob URL
     const url = URL.createObjectURL(fileData);
     const a = document.createElement('a');
     a.href = url;
@@ -979,25 +991,105 @@ function closeImageViewer() {
 }
 
 // ============================================================
-// PDF HANDLING
+// PDF HANDLING - OPTIMIZED FOR LARGE PDFs
 // ============================================================
 
 let isSharing = false;
 let shareTimeout = null;
 
 async function handlePdfFile(fileData, fileName) {
-    const openMode = docmanSettings.pdfOpen || 'external';
+    let openMode = docmanSettings.pdfOpen || 'docman';
 
+    // ------------------------------------------------------------------
+    // CRASH RECOVERY: the internal EmbedPDF/PDFium engine can hard-crash
+    // the renderer (blank white page, whole app/tab restarts) on PDFs
+    // whose *content* (high-res images, complex vectors, bad fonts) blows
+    // its WASM memory budget -- this isn't correlated with file size, so
+    // no size threshold fully prevents it, and because it's a process
+    // crash, no JS here can catch it in the moment (the watchdog below
+    // only catches HANGS, not crashes -- a crash kills the JS context
+    // before any timer/catch can run).
+    //
+    // What we CAN do: mark "about to open internally" right before we
+    // hand off, and clear that mark as soon as we know the document
+    // opened successfully (or failed cleanly). If DOCMAN reloads and
+    // finds a stale mark left over from last time, that means the last
+    // internal open never got a chance to clear it -- i.e. it crashed.
+    // Auto-fall back to External so the user isn't stuck crash-looping
+    // on the same file, and tell them why.
+    // ------------------------------------------------------------------
+    if (openMode === 'docman') {
+        try {
+            const pending = JSON.parse(localStorage.getItem(PDF_CRASH_FLAG_KEY) || 'null');
+            if (pending) {
+                docmanSettings.pdfOpen = 'external';
+                openMode = 'external';
+                saveSettings();
+                localStorage.removeItem(PDF_CRASH_FLAG_KEY);
+                showToast('Built-in PDF viewer crashed last time opening "' + pending.fileName + '". Switched to External for safety -- you can change this back in Settings.', true);
+                await sharePdfExternally(fileData, fileName);
+                return;
+            }
+        } catch (e) { /* ignore malformed flag */ }
+    }
+
+    // ================================================================
+    // SMART SIZE-BASED FALLBACK FOR LARGE PDFs
+    // ================================================================
+    const fileSizeMB = fileData.size / (1024 * 1024);
+    const thresholdBytes = (docmanSettings.pdfThreshold || 50) * 1024 * 1024;
+    
+    // INSTANT FALLBACK for very large files (>50MB or user threshold)
+    if (fileData.size >= thresholdBytes) {
+        showToast('PDF is ' + fileSizeMB.toFixed(1) + ' MB (over ' + (docmanSettings.pdfThreshold || 50) + ' MB threshold) — opening externally.', false);
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
+    
+    // PROACTIVE FALLBACK for files >20MB on iOS (WebKit is more sensitive)
+    if (isIOS() && fileData.size > 20 * 1024 * 1024) {
+        showToast('Large PDF (' + fileSizeMB.toFixed(1) + ' MB) — opening externally for better performance.', false);
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
+    
+    // PROACTIVE FALLBACK for files >30MB on Android (limited memory)
+    if (isAndroid() && fileData.size > 30 * 1024 * 1024) {
+        showToast('Large PDF (' + fileSizeMB.toFixed(1) + ' MB) — opening externally for better performance.', false);
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
+
+    // Samsung Internet - force built-in viewer
     if (isSamsungBrowser()) {
         openPdfViewer(fileData, fileName);
         return;
     }
 
+    // iOS users can now choose - removed forced external
+    if (isIOS() && openMode === 'docman' && !window._iosEmbedPdfWarned) {
+        window._iosEmbedPdfWarned = true;
+        showToast('Built-in viewer may be slower on iOS. Switch to "External" in Settings if you experience issues.', false);
+    }
+
     if (openMode === 'docman') {
+        // Check if file is likely to cause crash based on size
+        if (fileData.size > 15 * 1024 * 1024) {
+            showToast('Opening large PDF (' + fileSizeMB.toFixed(1) + ' MB) — may take a moment...', false);
+        }
         openPdfViewer(fileData, fileName);
     } else {
         await sharePdfExternally(fileData, fileName);
     }
+}
+
+function isIOS() {
+    // Covers iPhone/iPad Safari and Chrome-for-iOS (which is WebKit under the
+    // hood too -- Apple requires all iOS browsers to use WebKit). Also catches
+    // iPadOS 13+ which reports as "Macintosh" but exposes touch support, unlike
+    // real Macs.
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
 function isAndroid() {
@@ -1009,19 +1101,33 @@ function isSamsungBrowser() {
 }
 
 async function sharePdfExternally(fileData, fileName) {
+    // ── Android ───────────────────────────────────────────────────────────────
+    // blob: URLs are origin-scoped; default Android browsers treat any attempt
+    // to open one in a new tab as a download.  The only approach that reliably
+    // triggers the OS "Open with…" chooser across Chrome, Samsung Internet,
+    // MIUI browser, and standalone-PWA mode is Web Share API with a File object.
+    // We try it unconditionally (not guarded by canShare) because some browsers
+    // report canShare=false yet still execute share() correctly.
     if (isAndroid()) {
         const file = new File([fileData], fileName, { type: 'application/pdf' });
 
+        // Try Web Share API — works on Chrome, Samsung Internet 12+, and PWA mode
         if (navigator.share) {
             try {
                 await navigator.share({ files: [file], title: fileName });
                 return;
             } catch (err) {
-                if (err.name === 'AbortError') return;
+                if (err.name === 'AbortError') return; // user dismissed
+                // NotAllowedError, DataError, etc — fall through to blob URL
                 console.warn('navigator.share failed:', err.name, err.message);
             }
         }
 
+        // Last resort: open blob URL in new tab.
+        // On Chrome browser (non-standalone) this shows "Open with…".
+        // On default browser it may download — but there is no better option
+        // if share() is completely unavailable.
+        // In Capacitor WebView, blob URLs in new tabs don't work — use nativeDownload
         if (window.Capacitor) {
             await nativeDownload(fileData, fileName);
         } else {
@@ -1042,6 +1148,7 @@ async function sharePdfExternally(fileData, fileName) {
         return;
     }
 
+    // ── iOS / Desktop ─────────────────────────────────────────────────────────
     try {
         isSharing = true;
         const file = new File([fileData], fileName, { type: 'application/pdf' });
@@ -1109,6 +1216,7 @@ async function nativeDownload(blob, fileName) {
         }
     }
 
+    // PWA / browser fallback
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1129,7 +1237,7 @@ function downloadPdf(fileData, fileName) {
 }
 
 // ============================================================
-// BUILT-IN PDF VIEWER - WITH SCROLLING + INSTANT PINCH ZOOM
+// BUILT-IN PDF VIEWER - WITH MEMORY PROTECTION
 // ============================================================
 function openPdfViewer(fileData, fileName) {
     const existing = document.getElementById('pdfViewer');
@@ -1138,30 +1246,75 @@ function openPdfViewer(fileData, fileName) {
         existing.remove();
     }
 
+    // Check file size before opening - if too large, force external
+    const fileSizeMB = fileData.size / (1024 * 1024);
+    
+    // If file is extremely large (>80MB), don't even try internal
+    if (fileSizeMB > 80) {
+        showToast('PDF is ' + fileSizeMB.toFixed(1) + ' MB — too large for internal viewer. Opening externally.', true);
+        sharePdfExternally(fileData, fileName);
+        return;
+    }
+
     const url = URL.createObjectURL(fileData);
+    const docId = 'docman-doc-' + Date.now();
 
     const viewer = document.createElement('div');
     viewer.id = 'pdfViewer';
     viewer.className = 'pdf-viewer';
     viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
 
+    // Add memory indicator for large files
+    const memoryWarning = fileSizeMB > 25 ? 
+        `<span style="color:#f59e0b;font-size:0.7rem;margin-right:8px;">⚠️ ${fileSizeMB.toFixed(1)}MB</span>` : '';
+
     viewer.innerHTML = `
-        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;flex-shrink:0;z-index:2;min-height:52px;touch-action:manipulation;">
+        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:#212937;border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;flex-shrink:0;z-index:2;min-height:52px;touch-action:manipulation;">
             <button onclick="closePdfViewer()" ontouchstart="" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#ef4444;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;letter-spacing:0.02em;touch-action:manipulation;flex-shrink:0;">
                 Close
             </button>
             <span class="pdf-viewer-title" style="flex:1;color:#e2e8f0;font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;">${escapeHtml(fileName)}</span>
+            ${memoryWarning}
+            <div style="width:1px;align-self:stretch;background:rgba(255,255,255,0.15);flex-shrink:0;margin:0 2px;"></div>
+            <div id="pdfZoomControls" style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
+                <button id="pdfZoomOutBtn" title="Zoom out" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-minus" style="font-size:0.7rem;"></i></button>
+                <span id="pdfZoomLabel" style="color:#94a3b8;font-size:0.75rem;font-weight:600;width:44px;text-align:center;font-family:Inter,sans-serif;">100%</span>
+                <button id="pdfZoomInBtn" title="Zoom in" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-plus" style="font-size:0.7rem;"></i></button>
+                <div style="width:1px;align-self:stretch;background:rgba(255,255,255,0.15);flex-shrink:0;margin:0 6px;"></div>
+                <button id="pdfFitWidthBtn" title="Fit width" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-arrows-left-right" style="font-size:0.7rem;"></i></button>
+                <button id="pdfFitPageBtn" title="Fit page" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-expand" style="font-size:0.7rem;"></i></button>
+            </div>
         </div>
-        <div id="pdfViewerBody" style="flex:1;overflow-y:auto;overflow-x:auto;background:#2a2a2a;padding:12px 8px;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;">
-            <div id="pdfCanvasContainer" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:min-content;will-change:transform;"></div>
-            <div id="pdfLoadingMsg" style="color:#94a3b8;text-align:center;padding:40px 0;font-family:Inter,sans-serif;font-size:0.9rem;">Loading PDF…</div>
+        <div id="pdfViewerBody" style="flex:1;position:relative;background:#2a2a2a;overflow:hidden;">
+            <div id="embedpdfContainer" style="width:100%;height:100%;"></div>
+            <div id="pdfLoadingMsg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-family:Inter,sans-serif;font-size:0.9rem;pointer-events:none;">
+                <div style="text-align:center;">
+                    <div style="display:inline-block;width:30px;height:30px;border:3px solid rgba(255,255,255,0.1);border-top:3px solid #3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;"></div>
+                    <div>Loading PDF${fileSizeMB > 10 ? ' (' + fileSizeMB.toFixed(1) + ' MB)' : ''}…</div>
+                    ${fileSizeMB > 15 ? '<div style="font-size:0.7rem;color:#6b7280;margin-top:6px;">Large file — please be patient</div>' : ''}
+                </div>
+            </div>
         </div>
     `;
+
+    // Add spin animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    `;
+    viewer.appendChild(style);
 
     document.body.appendChild(viewer);
     viewer._url = url;
     viewer._fileName = fileName;
     viewer._fileData = fileData;
+
+    // Arm the crash-recovery flag
+    try {
+        localStorage.setItem(PDF_CRASH_FLAG_KEY, JSON.stringify({ fileName: fileName, time: Date.now(), size: fileData.size }));
+    } catch (e) { /* ignore */ }
 
     const escHandler = function(e) {
         if (e.key === 'Escape') {
@@ -1172,394 +1325,284 @@ function openPdfViewer(fileData, fileName) {
     document.addEventListener('keydown', escHandler);
     viewer._escHandler = escHandler;
 
-    let pdfZoom = 1.0;
-    let pdfDocRef = null;
-    let baseViewerWidth = 0;
+    renderPdfWithEmbedPdf(fileData, docId, fileName);
+}
 
-    // ---- PINCH ZOOM STATE ----
-    let isPinching = false;
-    let pinchStartDist = 0;
-    let pinchStartZoom = 1;
-    let pinchCenterX = 0;
-    let pinchCenterY = 0;
-    let pinchPageNum = 1;
-    let activePinchElement = null;
+// ============================================================
+// EmbedPDF (PDFium/WASM) rendering engine - ENHANCED
+// ============================================================
 
-    // ---- Find page at point ----
-    function findPageAtPoint(x, y) {
-        const container = document.getElementById('pdfCanvasContainer');
-        if (!container) return 1;
-        const pages = container.querySelectorAll('[data-page]');
-        let closest = null;
-        let closestDist = Infinity;
-        for (const p of pages) {
-            const r = p.getBoundingClientRect();
-            const cx = (r.left + r.right) / 2;
-            const cy = (r.top + r.bottom) / 2;
-            const d = Math.hypot(cx - x, cy - y);
-            if (d < closestDist) {
-                closestDist = d;
-                closest = p;
-            }
-        }
-        if (closest) {
-            return parseInt(closest.dataset.page, 10);
-        }
-        return 1;
+// Vendored locally in vendor/embedpdf/ (embedpdf.js + pdfium.wasm)
+const EMBEDPDF_LOCAL = './vendor/embedpdf/embedpdf.js';
+let embedPdfModulePromise = null;
+
+function loadEmbedPdfModule(forceRetry) {
+    if (forceRetry) embedPdfModulePromise = null;
+    if (!embedPdfModulePromise) {
+        const importPromise = import(/* webpackIgnore: true */ EMBEDPDF_LOCAL);
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('EmbedPDF load timed out')), 30000);
+        });
+        embedPdfModulePromise = Promise.race([importPromise, timeoutPromise]).catch(err => {
+            embedPdfModulePromise = null;
+            throw err;
+        });
+    }
+    return embedPdfModulePromise;
+}
+
+// Warm up the PDF engine in the background
+(function preloadEmbedPdf() {
+    const warm = () => { loadEmbedPdfModule().catch(() => {}); };
+    if ('requestIdleCallback' in window) {
+        requestIdleCallback(warm, { timeout: 5000 });
+    } else {
+        setTimeout(warm, 1500);
+    }
+})();
+
+function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
+    const container = document.getElementById('embedpdfContainer');
+    const loadingMsg = document.getElementById('pdfLoadingMsg');
+    const viewerEl = document.getElementById('pdfViewer');
+    if (!container || !viewerEl) return;
+
+    // Enhanced loading message for large files
+    const fileSizeMB = fileData.size / (1024 * 1024);
+    
+    if (loadingMsg && fileSizeMB > 10) {
+        loadingMsg.innerHTML = `
+            <div style="text-align:center;">
+                <div style="display:inline-block;width:30px;height:30px;border:3px solid rgba(255,255,255,0.1);border-top:3px solid #3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;"></div>
+                <div>Loading PDF (${fileSizeMB.toFixed(1)} MB)…</div>
+                <div style="font-size:0.7rem;color:#6b7280;margin-top:6px;">This may take a moment</div>
+            </div>
+        `;
     }
 
-    // ---- Apply scale to a page with CSS transform ----
-    function applyScaleToPage(pageNum, scale, centerX, centerY) {
-        const container = document.getElementById('pdfCanvasContainer');
-        if (!container) return;
-        const elements = container.querySelectorAll('[data-page="' + pageNum + '"]');
-        for (const el of elements) {
-            const rect = el.getBoundingClientRect();
-            const originX = (centerX - rect.left) / rect.width;
-            const originY = (centerY - rect.top) / rect.height;
-            el.style.transformOrigin = (originX * 100) + '% ' + (originY * 100) + '%';
-            el.style.transform = 'scale(' + scale + ')';
-            el.style.position = 'relative';
-            el.style.zIndex = '10';
-            el.style.willChange = 'transform';
-            el.style.transition = 'none';
-            activePinchElement = el;
-        }
+    let stage = 'starting';
+    let watchdogTimer = null;
+    let settled = false;
+    let startTime = Date.now();
+
+    function setStage(s) {
+        stage = s;
+        console.log('[PDF watchdog] stage:', s, '-', fileName, 'size:', fileSizeMB.toFixed(1) + 'MB');
     }
 
-    // ---- Finalize pinch ----
-    function finalizePinch(pageNum, finalScale) {
-        const container = document.getElementById('pdfCanvasContainer');
-        if (!container) return;
+    function clearWatchdog() {
+        if (watchdogTimer) { clearTimeout(watchdogTimer); watchdogTimer = null; }
+    }
+
+    function showStuckUI(stageAtTimeout) {
+        if (settled) return;
+        clearPdfCrashFlag();
+        if (!document.body.contains(viewerEl)) return;
         
-        // Reset transform on the pinched page
-        const elements = container.querySelectorAll('[data-page="' + pageNum + '"]');
-        for (const el of elements) {
-            el.style.transform = '';
-            el.style.transformOrigin = '';
-            el.style.position = '';
-            el.style.zIndex = '';
-            el.style.willChange = '';
-            el.style.transition = '';
-        }
-        activePinchElement = null;
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const msgEl = document.getElementById('pdfLoadingMsg') || loadingMsg;
+        const host = msgEl && document.body.contains(msgEl) ? msgEl : container;
+        if (!host) return;
         
-        pdfZoom = finalScale;
+        console.warn('[PDF watchdog] stuck at stage:', stageAtTimeout, '-', fileName, 'elapsed:', elapsed + 's');
+        host.style.pointerEvents = 'auto';
+        host.style.position = 'absolute';
+        host.style.inset = '0';
+        host.style.display = 'flex';
+        host.style.alignItems = 'center';
+        host.style.justifyContent = 'center';
+        host.style.background = '#2a2a2a';
+        host.innerHTML = `
+            <div style="text-align:center;padding:0 24px;max-width:340px;">
+                <div style="color:#e2e8f0;font-family:Inter,sans-serif;font-size:0.9rem;margin-bottom:6px;">
+                    ${fileSizeMB > 15 ? '⚠️ Large PDF is taking too long to open.' : 'This PDF is taking too long to open.'}
+                </div>
+                <div style="color:#94a3b8;font-family:Inter,sans-serif;font-size:0.75rem;margin-bottom:4px;">Size: ${fileSizeMB.toFixed(1)} MB</div>
+                <div style="color:#6b7280;font-family:Inter,sans-serif;font-size:0.7rem;margin-bottom:16px;">Stuck at: ${escapeHtml(stageAtTimeout)} (${elapsed}s)</div>
+                <div>
+                    <button id="pdfWatchdogRetryBtn" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Retry</button>
+                    <button id="pdfWatchdogExternalBtn" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;margin:0 6px 8px;">Open Externally</button>
+                </div>
+            </div>
+        `;
         
-        // Re-render the page at final zoom
-        rerenderSinglePage(pageNum, finalScale, function() {
-            // Defer other pages for lazy loading
-            const scaledWidth = Math.round(baseViewerWidth * finalScale);
-            const otherPages = container.querySelectorAll('[data-page]:not([data-page="' + pageNum + '"])');
-            for (const p of otherPages) {
-                const pNum = parseInt(p.dataset.page, 10);
-                if (p.dataset.rendered === 'false') continue;
-                p.dataset.rendered = 'false';
-                p.innerHTML = '';
-                p.style.cssText = 'width:' + scaledWidth + 'px;min-height:200px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;';
-                p.textContent = 'Page ' + pNum;
+        const retryBtn = document.getElementById('pdfWatchdogRetryBtn');
+        if (retryBtn) retryBtn.addEventListener('click', function() {
+            if (viewerEl._embedPdfInstance && viewerEl._embedPdfInstance.destroy) {
+                try { viewerEl._embedPdfInstance.destroy(); } catch (e) {}
             }
-            // Lazy load with IntersectionObserver
-            if ('IntersectionObserver' in window) {
-                const obs = new IntersectionObserver(function(entries) {
-                    for (const entry of entries) {
-                        if (entry.isIntersecting) {
-                            const pNum = parseInt(entry.target.dataset.page, 10);
-                            rerenderSinglePage(pNum, finalScale);
-                            obs.unobserve(entry.target);
-                        }
-                    }
-                }, { rootMargin: '200px' });
-                for (const p of otherPages) {
-                    obs.observe(p);
-                }
-            }
+            container.innerHTML = '';
+            renderPdfWithEmbedPdf(fileData, docId, fileName, true);
+        });
+        
+        const externalBtn = document.getElementById('pdfWatchdogExternalBtn');
+        if (externalBtn) externalBtn.addEventListener('click', function() {
+            sharePdfExternally(fileData, fileName);
         });
     }
 
-    // ---- Rerender single page ----
-    function rerenderSinglePage(pageNum, zoom, callback) {
-        const container = document.getElementById('pdfCanvasContainer');
-        if (!container || !pdfDocRef) { if (callback) callback(); return; }
-        
-        const el = container.querySelector('[data-page="' + pageNum + '"]');
-        if (!el) { if (callback) callback(); return; }
-        
-        const scaledWidth = Math.round(baseViewerWidth * zoom);
-        pdfDocRef.getPage(pageNum).then(function(page) {
-            const viewport = page.getViewport({ scale: 1 });
-            const dpr = Math.min(window.devicePixelRatio || 1, 2);
-            const scale = scaledWidth / viewport.width;
-            const scaledViewport = page.getViewport({ scale: scale * dpr });
-            const displayHeight = viewport.height * scale;
-            
-            const canvas = document.createElement('canvas');
-            canvas.width = scaledViewport.width;
-            canvas.height = scaledViewport.height;
-            canvas.style.cssText = 'display:block;width:' + scaledWidth + 'px;height:' + displayHeight + 'px;max-width:none;border-radius:4px;touch-action:none;';
-            
-            const ctx = canvas.getContext('2d', { alpha: false });
-            page.render({
-                canvasContext: ctx,
-                viewport: scaledViewport,
-                intent: 'display'
-            }).promise.then(function() {
-                el.innerHTML = '';
-                el.appendChild(canvas);
-                el.style.width = scaledWidth + 'px';
-                el.style.minHeight = '';
-                el.style.alignItems = '';
-                el.style.justifyContent = '';
-                el.dataset.rendered = 'true';
-                if (callback) callback();
-            });
-        }).catch(function() { if (callback) callback(); });
+    // Adjust timeout based on file size
+    const timeoutMs = Math.min(60000, Math.max(20000, fileSizeMB * 1000 + 15000));
+    function armWatchdog(ms) {
+        clearWatchdog();
+        watchdogTimer = setTimeout(function() { showStuckUI(stage); }, ms || timeoutMs);
     }
 
-    // ---- Setup pinch gestures ----
-    function setupPinchGestures(viewerBody) {
-        let touchStartDistance = 0;
-        let touchStartZoom = 1;
-        let isPinchActive = false;
-        let pinchPage = 1;
-        let centerX = 0;
-        let centerY = 0;
+    armWatchdog(timeoutMs);
 
-        viewerBody.addEventListener('touchstart', function(e) {
-            const touches = e.touches;
-            
-            if (touches.length === 2) {
-                // START PINCH IMMEDIATELY
-                isPinchActive = true;
-                isPinching = true;
-                const dx = touches[0].clientX - touches[1].clientX;
-                const dy = touches[0].clientY - touches[1].clientY;
-                touchStartDistance = Math.sqrt(dx * dx + dy * dy);
-                touchStartZoom = pdfZoom;
-                centerX = (touches[0].clientX + touches[1].clientX) / 2;
-                centerY = (touches[0].clientY + touches[1].clientY) / 2;
-                pinchPage = findPageAtPoint(centerX, centerY);
-                pinchPageNum = pinchPage;
-                pinchCenterX = centerX;
-                pinchCenterY = centerY;
-                pinchStartZoom = touchStartZoom;
-                pinchStartDist = touchStartDistance;
-                
-                // Apply initial transform
-                applyScaleToPage(pinchPage, pdfZoom, centerX, centerY);
-                e.preventDefault();
-            }
-        }, { passive: false });
+    // Read file bytes
+    setStage('loading engine module + reading file bytes');
+    
+    const loadModule = loadEmbedPdfModule(forceRetry);
+    const readBuffer = fileData.arrayBuffer();
+    
+    Promise.all([loadModule, readBuffer]).then(function(results) {
+        const mod = results[0];
+        const arrayBuffer = results[1];
+        if (!document.body.contains(viewerEl)) { clearWatchdog(); return; }
 
-        viewerBody.addEventListener('touchmove', function(e) {
-            const touches = e.touches;
-            
-            if (isPinchActive && touches.length === 2) {
-                // CONTINUOUS PINCH - INSTANT RESPONSE
-                const dx = touches[0].clientX - touches[1].clientX;
-                const dy = touches[0].clientY - touches[1].clientY;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                
-                if (dist > 0 && touchStartDistance > 0) {
-                    const ratio = dist / touchStartDistance;
-                    let newZoom = touchStartZoom * ratio;
-                    newZoom = Math.min(3.0, Math.max(1.0, newZoom));
-                    
-                    centerX = (touches[0].clientX + touches[1].clientX) / 2;
-                    centerY = (touches[0].clientY + touches[1].clientY) / 2;
-                    pinchCenterX = centerX;
-                    pinchCenterY = centerY;
-                    pdfZoom = newZoom;
-                    
-                    // Apply transform INSTANTLY
-                    applyScaleToPage(pinchPage, newZoom, centerX, centerY);
-                }
-                e.preventDefault();
-            }
-        }, { passive: false });
+        setStage('initializing PDFium engine (wasm)');
+        const EmbedPDF = mod.default;
+        const ZoomMode = mod.ZoomMode;
 
-        viewerBody.addEventListener('touchend', function(e) {
-            if (isPinchActive) {
-                // FINALIZE PINCH
-                const finalZoom = Math.min(3.0, Math.max(1.0, pdfZoom));
-                finalizePinch(pinchPage, finalZoom);
-                isPinchActive = false;
-                isPinching = false;
-                touchStartDistance = 0;
-                e.preventDefault();
-            }
-        }, { passive: false });
-
-        viewerBody.addEventListener('touchcancel', function(e) {
-            if (isPinchActive) {
-                const finalZoom = Math.min(3.0, Math.max(1.0, pdfZoom));
-                finalizePinch(pinchPage, finalZoom);
-                isPinchActive = false;
-                isPinching = false;
-                touchStartDistance = 0;
-            }
-        }, { passive: false });
-    }
-
-    // ---- Render all pages ----
-    function renderAllPagesForDoc(pdfDoc, baseWidth, onRendered, priorityPageNum) {
-        const container = document.getElementById('pdfCanvasContainer');
-        if (!container) return;
-        const viewerBody = document.getElementById('pdfViewerBody');
-        const totalPages = pdfDoc.numPages;
-        const scaledWidth = Math.round(baseWidth * pdfZoom);
-
-        const placeholders = [];
-        for (let i = 1; i <= totalPages; i++) {
-            const placeholder = document.createElement('div');
-            placeholder.dataset.page = i;
-            placeholder.dataset.rendered = 'false';
-            placeholder.style.cssText = 'width:' + scaledWidth + 'px;min-height:200px;background:#fff;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#999;font-size:0.8rem;';
-            placeholder.textContent = 'Page ' + i;
-            container.appendChild(placeholder);
-            placeholders.push(placeholder);
-        }
-
-        let priorityIndexes;
-        if (priorityPageNum != null && priorityPageNum >= 1 && priorityPageNum <= placeholders.length) {
-            priorityIndexes = [priorityPageNum - 1];
-        } else {
-            priorityIndexes = [0, 1].filter(function(i) { return i < placeholders.length; });
-            if (viewerBody) {
-                const viewerRect = viewerBody.getBoundingClientRect();
-                const visible = [];
-                placeholders.forEach(function(p, idx) {
-                    const r = p.getBoundingClientRect();
-                    if (r.bottom >= viewerRect.top - 50 && r.top <= viewerRect.bottom + 50) {
-                        visible.push(idx);
-                    }
-                });
-                if (visible.length) priorityIndexes = visible;
-            }
-        }
-
-        let pendingPriority = priorityIndexes.length;
-        let firedCallback = false;
-        function maybeFireCallback() {
-            if (firedCallback) return;
-            pendingPriority--;
-            if (pendingPriority <= 0) {
-                firedCallback = true;
-                if (onRendered) requestAnimationFrame(onRendered);
-            }
-        }
-
-        function renderPageInto(placeholder, pageNum, isPriority) {
-            if (placeholder.dataset.rendered === 'true') return;
-            placeholder.dataset.rendered = 'true';
-            placeholder.textContent = '';
-
-            pdfDoc.getPage(pageNum).then(function(page) {
-                const viewport = page.getViewport({ scale: 1 });
-                const dpr = Math.min(window.devicePixelRatio || 1, 2);
-                const scale = (scaledWidth / viewport.width);
-                const scaledViewport = page.getViewport({ scale: scale * dpr });
-                const displayHeight = viewport.height * scale;
-
-                const canvas = document.createElement('canvas');
-                canvas.width = scaledViewport.width;
-                canvas.height = scaledViewport.height;
-                canvas.style.cssText = 'display:block;width:' + scaledWidth + 'px;height:' + displayHeight + 'px;max-width:none;border-radius:4px;touch-action:none;';
-                placeholder.style.minHeight = '';
-                placeholder.style.alignItems = '';
-                placeholder.style.justifyContent = '';
-                placeholder.appendChild(canvas);
-
-                const ctx = canvas.getContext('2d', { alpha: false });
-                page.render({
-                    canvasContext: ctx,
-                    viewport: scaledViewport,
-                    intent: 'display'
-                }).promise.then(function() {
-                    if (isPriority) maybeFireCallback();
-                });
-            });
-        }
-
-        if (!priorityIndexes.length && onRendered) {
-            requestAnimationFrame(onRendered);
-        }
-
-        priorityIndexes.forEach(function(idx) {
-            if (placeholders[idx]) renderPageInto(placeholders[idx], idx + 1, true);
+        // --- OPTIMIZED CONFIGURATION ---
+        const instance = EmbedPDF.init({
+            type: 'container',
+            target: container,
+            theme: { preference: 'dark' },
+            wasmUrl: new URL('./vendor/embedpdf/pdfium.wasm', document.baseURI).href,
+            fontFallback: null,
+            fonts: { 
+                ui: { stylesheetUrl: null }, 
+                signature: { stylesheetUrl: null } 
+            },
+            stamp: { manifests: [] },
+            zoom: { defaultZoomLevel: ZoomMode.FitPage },
+            // Keep fewer pages rendered/cached at once in the scroll buffer.
+            // Default is 4 (i.e. ~9 pages held in memory at a time); for large,
+            // image-heavy engineering drawings that's enough to push PDFium's
+            // WASM heap over the edge on Android WebView. 1 keeps memory low
+            // while still prefetching the next/prev page for smooth scroll.
+            scroll: { defaultBufferSize: 1 },
+            // JPEG tiles are far smaller in memory/CPU than PNG for scanned or
+            // raster-heavy pages (PNG is EmbedPDF's default). Lossy JPEG is an
+            // acceptable tradeoff for viewing; it doesn't touch the underlying
+            // PDF file.
+            render: { defaultImageType: 'image/jpeg' },
+            documentManager: {
+                initialDocuments: [{ buffer: arrayBuffer, documentId: docId, name: fileName }]
+            },
+            disabledCategories: ['document-open', 'document-close']
         });
-        if (placeholders[0] && placeholders[0].dataset.rendered === 'false') renderPageInto(placeholders[0], 1, false);
-        if (placeholders[1] && placeholders[1].dataset.rendered === 'false') renderPageInto(placeholders[1], 2, false);
+        
+        viewerEl._embedPdfInstance = instance;
+        setStage('waiting for plugin registry');
 
-        if ('IntersectionObserver' in window) {
-            const observer = new IntersectionObserver(function(entries) {
-                entries.forEach(function(entry) {
-                    if (entry.isIntersecting) {
-                        const el = entry.target;
-                        renderPageInto(el, parseInt(el.dataset.page), false);
-                        observer.unobserve(el);
+        instance.registry.then(function(registry) {
+            if (loadingMsg) loadingMsg.remove();
+            if (!document.body.contains(viewerEl)) { clearWatchdog(); return; }
+
+            setStage('opening document (PDFium parsing)');
+            armWatchdog(timeoutMs);
+
+            const docManagerApi = registry.getPlugin('document-manager')?.provides();
+            if (docManagerApi) {
+                if (docManagerApi.isDocumentOpen && docManagerApi.isDocumentOpen(docId)) {
+                    settled = true;
+                    clearWatchdog();
+                    setStage('document open');
+                    clearPdfCrashFlag();
+                } else {
+                    if (docManagerApi.onDocumentOpened) {
+                        docManagerApi.onDocumentOpened(function(opened) {
+                            if (opened && opened.documentId === docId) {
+                                settled = true;
+                                clearWatchdog();
+                                setStage('document open');
+                                clearPdfCrashFlag();
+                            }
+                        });
                     }
-                });
-            }, { rootMargin: '200px' });
-            placeholders.forEach(function(p) {
-                if (p.dataset.rendered === 'false') observer.observe(p);
-            });
-        } else {
-            placeholders.forEach(function(p, i) {
-                if (p.dataset.rendered === 'false') {
-                    setTimeout(function() { renderPageInto(p, i + 1, false); }, i * 100);
+                    if (docManagerApi.onDocumentError) {
+                        docManagerApi.onDocumentError(function(errInfo) {
+                            if (errInfo && errInfo.documentId === docId) {
+                                settled = true;
+                                clearWatchdog();
+                                clearPdfCrashFlag();
+                                console.error('[PDF watchdog] document-manager reported an error:', errInfo);
+                                showStuckUI('engine reported an error opening the document');
+                            }
+                        });
+                    }
                 }
-            });
+            }
+
+            // Zoom controls
+            const zoomApi = registry.getPlugin('zoom')?.provides()?.forDocument(docId);
+            if (!zoomApi) return;
+
+            const zoomLabel = document.getElementById('pdfZoomLabel');
+            const zoomInBtn = document.getElementById('pdfZoomInBtn');
+            const zoomOutBtn = document.getElementById('pdfZoomOutBtn');
+            const fitWidthBtn = document.getElementById('pdfFitWidthBtn');
+            const fitPageBtn = document.getElementById('pdfFitPageBtn');
+
+            function refreshZoomLabel() {
+                if (!zoomLabel) return;
+                const state = zoomApi.getState();
+                zoomLabel.textContent = Math.round(state.currentZoomLevel * 100) + '%';
+            }
+
+            zoomApi.onStateChange(refreshZoomLabel);
+            refreshZoomLabel();
+
+            if (zoomInBtn) zoomInBtn.addEventListener('click', function() { zoomApi.zoomIn(); });
+            if (zoomOutBtn) zoomOutBtn.addEventListener('click', function() { zoomApi.zoomOut(); });
+            if (fitWidthBtn) fitWidthBtn.addEventListener('click', function() { zoomApi.requestZoom(ZoomMode.FitWidth); });
+            if (fitPageBtn) fitPageBtn.addEventListener('click', function() { zoomApi.requestZoom(ZoomMode.FitPage); });
+        });
+    }).catch(function(err) {
+        settled = true;
+        clearWatchdog();
+        clearPdfCrashFlag();
+        console.error('EmbedPDF failed to load', err);
+        
+        // For large files, automatically fallback to external
+        if (fileSizeMB > 15) {
+            showToast('PDF engine failed for large file. Opening externally...', true);
+            sharePdfExternally(fileData, fileName);
+            return;
         }
-    }
-
-    // ---- Load PDF.js and render ----
-    function renderPdfWithPdfJs(pdfUrl) {
-        // ===== FIXED: Use CDN instead of local vendor/ folder =====
-        const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
-        const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-
-        function doRender() {
-            const pdfjsLib = window['pdfjs-dist/build/pdf'];
-            pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
-
-            const container = document.getElementById('pdfCanvasContainer');
-            const loadingMsg = document.getElementById('pdfLoadingMsg');
-            const viewerBody = document.getElementById('pdfViewerBody');
-            if (!container || !viewerBody) return;
-
-            baseViewerWidth = viewerBody.clientWidth - 16;
-
-            pdfjsLib.getDocument(pdfUrl).promise.then(function(pdfDoc) {
-                if (loadingMsg) loadingMsg.style.display = 'none';
-                pdfDocRef = pdfDoc;
-                renderAllPagesForDoc(pdfDoc, baseViewerWidth);
-                
-                // Setup pinch gestures after document loads
-                setupPinchGestures(viewerBody);
-            }).catch(function(err) {
-                if (loadingMsg) loadingMsg.textContent = 'Could not render PDF: ' + err.message;
-            });
+        
+        if (loadingMsg) {
+            loadingMsg.style.pointerEvents = 'auto';
+            loadingMsg.innerHTML = '<div style="text-align:center;padding:0 24px;">' +
+                'Could not load the PDF engine. Check your internet connection and try again.' +
+                '<br><button id="pdfEngineRetryBtn" style="margin-top:14px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;">Retry</button>' +
+                '<br><button id="pdfEngineExternalBtn" style="margin-top:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:8px 22px;font-size:0.85rem;font-weight:600;font-family:Inter,sans-serif;cursor:pointer;touch-action:manipulation;">Open Externally</button>' +
+                '</div>';
+            const retryBtn = document.getElementById('pdfEngineRetryBtn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', function() {
+                    renderPdfWithEmbedPdf(fileData, docId, fileName, true);
+                });
+            }
+            const externalBtn = document.getElementById('pdfEngineExternalBtn');
+            if (externalBtn) {
+                externalBtn.addEventListener('click', function() {
+                    sharePdfExternally(fileData, fileName);
+                });
+            }
         }
+    });
+}
 
-        if (window['pdfjs-dist/build/pdf']) {
-            doRender();
-        } else {
-            const script = document.createElement('script');
-            script.src = PDFJS_CDN;
-            script.onload = doRender;
-            script.onerror = function() {
-                const msg = document.getElementById('pdfLoadingMsg');
-                if (msg) msg.textContent = 'Failed to load PDF renderer. Check your connection.';
-            };
-            document.head.appendChild(script);
-        }
-    }
-
-    renderPdfWithPdfJs(url);
+function clearPdfCrashFlag() {
+    try { localStorage.removeItem(PDF_CRASH_FLAG_KEY); } catch (e) {}
 }
 
 function closePdfViewer() {
+    clearPdfCrashFlag();
     const viewer = document.getElementById('pdfViewer');
     if (viewer) {
         if (viewer._url) {
@@ -1584,6 +1627,7 @@ function downloadPdfFromViewer() {
     }
 }
 
+// Expose PDF viewer functions to window
 window.closePdfViewer = closePdfViewer;
 window.downloadPdfFromViewer = downloadPdfFromViewer;
 
@@ -1758,7 +1802,7 @@ function createFileCard(file, folderPath) {
         cancelPress();
         if (!longPressTriggered && !isScrolling && Date.now() - touchStartTime < 300) {
             tappedByTouch = true;
-            if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'external') === 'external') {
+            if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'docman') === 'external') {
                 openFileWithGesture(file, folderPath);
             } else {
                 openFile(file.name, folderPath);
@@ -1778,7 +1822,7 @@ function createFileCard(file, folderPath) {
         if (touchCount > 1) { touchCount = 0; return; }
         touchCount = 0;
         if (longPressTriggered) { longPressTriggered = false; return; }
-        if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'external') === 'external') {
+        if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'docman') === 'external') {
             openFileWithGesture(file, folderPath);
         } else {
             openFile(file.name, folderPath);
@@ -2727,7 +2771,7 @@ function applyParticles() {
 }
 
 function applyRadioUI(radioName) {
-    const val = docmanSettings[radioName] || 'external';
+    const val = docmanSettings[radioName] || 'docman';
     document.querySelectorAll(`[data-radio="${radioName}"]`).forEach(dot => {
         dot.classList.toggle('active', dot.getAttribute('data-val') === val);
     });
@@ -2873,6 +2917,8 @@ async function exportBackupData() {
         zip.file('manifest.json', JSON.stringify(manifest));
         const filesFolder = zip.folder('files');
 
+        // Pull every file's actual content (lazy-loading blobs as needed) into the zip.
+        // Zip entry path mirrors folderPath/fileName so import can match it back to its folder.
         for (const path in allFiles) {
             for (const f of (allFiles[path] || [])) {
                 try {
@@ -3699,12 +3745,14 @@ function initImageViewerGestures() {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // Inject version
     const vEls = ['aboutVersionBadge', 'aboutVersionRow', 'deptInfoVersion'];
     vEls.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.textContent = APP_VERSION;
     });
 
+    // Theme
     const themeBtn = document.getElementById('themeToggle');
     if (themeBtn) themeBtn.onclick = toggleTheme;
 
@@ -3718,9 +3766,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     updateThemeIcon();
 
+    // Tabs
     document.getElementById('pdfTabBtn').onclick = () => setActiveTab('pdfs');
     document.getElementById('notesTabBtn').onclick = () => setActiveTab('notes');
 
+    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeImageViewer();
@@ -3728,6 +3778,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // Image viewer close
     const closeBtn = document.getElementById('closeImageViewer');
     if (closeBtn) closeBtn.onclick = closeImageViewer;
 
@@ -3738,6 +3789,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // File input
     document.getElementById('fileInput').addEventListener('change', async (e) => {
         await handleFiles(Array.from(e.target.files));
         e.target.value = '';
@@ -3749,8 +3801,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('homeBtn').addEventListener('click', goHome);
     document.getElementById('uploadBtn').addEventListener('click', triggerUpload);
 
+    // Settings
     initSettingsPage();
 
+    // Load data
     showLoadingSkeleton();
     await initDB();
 
