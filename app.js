@@ -1515,8 +1515,9 @@ function openPdfViewer(fileData, fileName) {
 
     // ---- Load PDF.js and render ----
     function renderPdfWithPdfJs(pdfUrl) {
-        const PDFJS_CDN = 'vendor/pdfjs/pdf.min.js';
-        const PDFJS_WORKER = 'vendor/pdfjs/pdf.worker.min.js';
+        // ===== FIXED: Use CDN instead of local vendor/ folder =====
+        const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js';
+        const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
         function doRender() {
             const pdfjsLib = window['pdfjs-dist/build/pdf'];
@@ -3894,4 +3895,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ============================================================
 // END OF FILE
-// ===========================================================
+// ============================================================
