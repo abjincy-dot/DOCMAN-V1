@@ -1499,12 +1499,12 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
             },
             stamp: { manifests: [] },
             zoom: { defaultZoomLevel: ZoomMode.FitPage },
-            // Keep fewer pages rendered/cached at once in the scroll buffer.
-            // Default is 4 (i.e. ~9 pages held in memory at a time); for large,
-            // image-heavy engineering drawings that's enough to push PDFium's
-            // WASM heap over the edge on Android WebView. 1 keeps memory low
-            // while still prefetching the next/prev page for smooth scroll.
-            scroll: { defaultBufferSize: 1 },
+            // Keep pages rendered/cached one ahead/behind while scrolling.
+            // With the dpr cap + JPEG tiles above already cutting per-page
+            // memory a lot, bufferSize:2 prerenders the next page before it
+            // enters the viewport (avoiding a white flash mid-scroll) while
+            // still using far less memory than the original default of 4.
+            scroll: { defaultBufferSize: 2 },
             // JPEG tiles are far smaller in memory/CPU than PNG for scanned or
             // raster-heavy pages (PNG is EmbedPDF's default). Lossy JPEG is an
             // acceptable tradeoff for viewing; it doesn't touch the underlying
