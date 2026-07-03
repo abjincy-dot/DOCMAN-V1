@@ -1046,8 +1046,9 @@ async function handlePdfFile(fileData, fileName) {
         return;
     }
     
-    // PROACTIVE FALLBACK for files >20MB on iOS (WebKit is more sensitive)
-    if (isIOS() && fileData.size > 20 * 1024 * 1024) {
+    // PROACTIVE FALLBACK for files >10MB on iOS (WebKit is more sensitive —
+    // observed OOM crashes on scroll with files as small as ~7MB)
+    if (isIOS() && fileData.size > 10 * 1024 * 1024) {
         showToast('Large PDF (' + fileSizeMB.toFixed(1) + ' MB) — opening externally for better performance.', false);
         await sharePdfExternally(fileData, fileName);
         return;
@@ -1465,6 +1466,26 @@ function renderPdfWithEmbedPdf(fileData, docId, fileName, forceRetry) {
         const EmbedPDF = mod.default;
         const ZoomMode = mod.ZoomMode;
 
+        // Cap devicePixelRatio while the internal viewer is open. EmbedPDF
+        // reads window.devicePixelRatio live at render time for every tile,
+        // with no config knob to override it. On a modern phone (dpr often
+        // 3x) that means each rendered tile uses ~9x the pixel data it would
+        // at dpr 1x -- enough on its own to OOM-crash Safari's WKWebView on
+        // image-heavy pages, even with a buffer of just 1 page. Capping at 2
+        // keeps things reasonably sharp while cutting peak memory a lot.
+        if (!('_docmanOrigDPR' in window)) {
+            window._docmanOrigDPR = window.devicePixelRatio;
+        }
+        const dprCap = (isIOS() || isAndroid()) ? 2 : window._docmanOrigDPR;
+        if (window._docmanOrigDPR > dprCap) {
+            try {
+                Object.defineProperty(window, 'devicePixelRatio', {
+                    configurable: true,
+                    get() { return dprCap; }
+                });
+            } catch (e) { /* ignore, fall back to native dpr */ }
+        }
+
         // --- OPTIMIZED CONFIGURATION ---
         const instance = EmbedPDF.init({
             type: 'container',
@@ -1603,6 +1624,16 @@ function clearPdfCrashFlag() {
 
 function closePdfViewer() {
     clearPdfCrashFlag();
+    if ('_docmanOrigDPR' in window) {
+        try {
+            const orig = window._docmanOrigDPR;
+            Object.defineProperty(window, 'devicePixelRatio', {
+                configurable: true,
+                get() { return orig; }
+            });
+        } catch (e) { /* ignore */ }
+        delete window._docmanOrigDPR;
+    }
     const viewer = document.getElementById('pdfViewer');
     if (viewer) {
         if (viewer._url) {
