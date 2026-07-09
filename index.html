@@ -309,7 +309,7 @@
 <div id="settingsPanel-pdf" class="settings-screen">
   <div class="settings-header">
     <button class="settings-back-btn settings-panel-back"><i class="fas fa-arrow-left"></i></button>
-    <div class="settings-header-title"><h2>PDF Settings</h2><span>Viewer &amp; threshold</span></div>
+    <div class="settings-header-title"><h2>PDF Settings</h2><span>Viewer</span></div>
   </div>
   <div class="settings-panel-body">
     <div class="settings-group-title">Open PDF Using</div>
@@ -319,19 +319,8 @@
         <div class="settings-radio-dot" data-radio="pdfOpen" data-val="external"></div>
       </div>
       <div class="settings-radio-row" id="pdfOpenDocman">
-        <div class="settings-item-text"><span class="settings-item-title">DOCMAN Viewer</span><span class="settings-item-sub">Built-in PDF reader</span></div>
+        <div class="settings-item-text"><span class="settings-item-title">DOCMAN Viewer</span><span class="settings-item-sub">Native reader (Android app only)</span></div>
         <div class="settings-radio-dot" data-radio="pdfOpen" data-val="docman"></div>
-      </div>
-    </div>
-    <div class="settings-group-title">Large PDF Threshold</div>
-    <div class="settings-card">
-      <div class="settings-stepper-row">
-        <div class="settings-item-text"><span class="settings-item-title">Threshold Size</span><span class="settings-item-sub">PDFs larger than this use External App</span></div>
-        <div class="settings-stepper">
-          <button class="settings-stepper-btn" id="pdfThresholdDown"><i class="fas fa-minus"></i></button>
-          <span class="settings-stepper-val"><span id="pdfThresholdVal">20</span> MB</span>
-          <button class="settings-stepper-btn" id="pdfThresholdUp"><i class="fas fa-plus"></i></button>
-        </div>
       </div>
     </div>
   </div>
@@ -588,7 +577,7 @@
 
 
 <script src="vendor/jszip/jszip.min.js"></script>
-<script src="app.js?v=151"></script>
+<script src="app.js?v=152"></script>
 
 
 <script>
