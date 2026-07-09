@@ -1,5 +1,5 @@
 const APP_VERSION = '1.0.7';
-const CACHE = 'docman-v142';
+const CACHE = 'docman-v143';
 // Small, critical-path files: install fails if any of these can't be cached
 // (they're tiny, so a failure here means something is actually wrong).
 const CORE_ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.json', './Images/settings-tray.png', './Images/settings-neon.png', './vendor/jszip/jszip.min.js'];
