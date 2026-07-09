@@ -3,7 +3,7 @@
 // Version: 1.0.0
 // ============================================================
 
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.1';
 
 const SETTINGS_KEY = 'docman_settings_v2';
 const RECENTS_KEY = 'docman_recents_v1';
@@ -177,7 +177,8 @@ const defaultSettings = {
     enableAnimations: true,
     enableParticles: true,
     theme: 'dark',
-    pdfOpen: 'docman',  // Internal by default
+    pdfOpen: 'external',
+    pdfThreshold: 20,
     showRecents: true,
     showFavorites: true,
     recentsLimit: 20,
@@ -265,70 +266,39 @@ async function saveDeptColors() {
     }
 }
 
-function serializeFileEntry(folderPath, f, blobStore) {
-    if (f.fsPath) {
-        return {
-            name: f.name,
-            type: f.type,
-            uploadedAt: f.uploadedAt || Date.now(),
-            favourite: f.favourite || false,
-            size: f.size || 0,
-            fsPath: f.fsPath
-        };
-    }
-    if (f.fileData instanceof Blob) {
-        const blobId = folderPath + '/' + f.name;
-        if (blobStore) blobStore.put({ blobId, blob: f.fileData });
-        return {
-            name: f.name,
-            type: f.type,
-            uploadedAt: f.uploadedAt || Date.now(),
-            favourite: f.favourite || false,
-            size: f.fileData.size || 0
-        };
-    }
-    if (f.dataUrl) {
-        return {
-            name: f.name,
-            type: f.type,
-            dataUrl: f.dataUrl,
-            uploadedAt: f.uploadedAt || Date.now(),
-            favourite: f.favourite || false,
-            size: f.size || 0
-        };
-    }
-    return {
-        name: f.name,
-        type: f.type,
-        uploadedAt: f.uploadedAt || Date.now(),
-        favourite: f.favourite || false,
-        size: f.size || 0
-    };
-}
-
-// Full rewrite of the files metadata store. Used only for bulk operations
-// (folder rename/delete, restore/import) that touch many folders at once.
-// IMPORTANT: this must NOT clear the 'blobs' store. Blob content is written
-// independently (by cacheFileAsBlob / serializeFileEntry) and almost never
-// lives in memory as a real Blob for files that were already saved in a
-// previous session (they're lazy-loaded on demand). Clearing 'blobs' here
-// would delete every file's actual content the moment any single file's
-// metadata changes.
-async function saveAllFilesToDB(clearBlobs = false) {
+async function saveAllFilesToDB() {
     const tx = db.transaction(['files', 'blobs'], 'readwrite');
     const fileStore = tx.objectStore('files');
     const blobStore = tx.objectStore('blobs');
     await fileStore.clear();
-    // clearBlobs is only safe when every file's blob is guaranteed to be a
-    // live Blob in memory right now (e.g. a full backup restore, where the
-    // whole in-memory state was just rebuilt from the zip). Never pass true
-    // from a normal single-file operation — most files are lazy-loaded and
-    // would silently lose their content.
-    if (clearBlobs) await blobStore.clear();
+    await blobStore.clear();
 
     for (const folderPath in allFiles) {
         if (allFiles[folderPath]?.length) {
-            const files = allFiles[folderPath].map(f => serializeFileEntry(folderPath, f, blobStore));
+            const files = allFiles[folderPath].map(f => {
+                if (f.fileData instanceof Blob) {
+                    const blobId = folderPath + '/' + f.name;
+                    blobStore.put({ blobId, blob: f.fileData });
+                    return {
+                        name: f.name,
+                        type: f.type,
+                        uploadedAt: f.uploadedAt || Date.now(),
+                        favourite: f.favourite || false,
+                        size: f.fileData.size || 0
+                    };
+                }
+                if (f.dataUrl) {
+                    return {
+                        name: f.name,
+                        type: f.type,
+                        dataUrl: f.dataUrl,
+                        uploadedAt: f.uploadedAt || Date.now(),
+                        favourite: f.favourite || false,
+                        size: f.size || 0
+                    };
+                }
+                return f;
+            });
             fileStore.put({ id: folderPath, folderPath, files });
         }
     }
@@ -336,69 +306,6 @@ async function saveAllFilesToDB(clearBlobs = false) {
         tx.oncomplete = resolve;
         tx.onerror = () => reject(tx.error);
     });
-}
-
-// Scoped save: rewrites only ONE folder's file-metadata record instead of
-// clearing and rebuilding the entire 'files' store. This is what favourite
-// toggle / rename / delete / add should use — it's what makes those feel
-// instant instead of touching every document in the app.
-async function saveFilesForFolder(folderPath) {
-    const tx = db.transaction(['files', 'blobs'], 'readwrite');
-    const fileStore = tx.objectStore('files');
-    const blobStore = tx.objectStore('blobs');
-    const files = allFiles[folderPath];
-    if (!files || !files.length) {
-        fileStore.delete(folderPath);
-    } else {
-        const serialized = files.map(f => serializeFileEntry(folderPath, f, blobStore));
-        fileStore.put({ id: folderPath, folderPath, files: serialized });
-    }
-    await new Promise((resolve, reject) => {
-        tx.oncomplete = resolve;
-        tx.onerror = () => reject(tx.error);
-    });
-}
-
-// Removes a single file's blob. Call this whenever a file is actually
-// deleted (not just renamed/favourited) so blobs don't leak forever.
-async function deleteBlobFromDB(folderPath, fileName) {
-    try {
-        const tx = db.transaction('blobs', 'readwrite');
-        tx.objectStore('blobs').delete(folderPath + '/' + fileName);
-        await new Promise((resolve, reject) => {
-            tx.oncomplete = resolve;
-            tx.onerror = () => reject(tx.error);
-        });
-    } catch (e) {
-        console.warn('Failed to delete blob:', e);
-    }
-}
-
-// Moves a single file's blob to a new key. Required whenever a file name
-// (or its folder path) changes, since the blob is keyed by "folderPath/name".
-async function renameBlobInDB(oldFolderPath, oldName, newFolderPath, newName) {
-    try {
-        const oldId = oldFolderPath + '/' + oldName;
-        const newId = newFolderPath + '/' + newName;
-        if (oldId === newId) return;
-        const tx = db.transaction('blobs', 'readwrite');
-        const store = tx.objectStore('blobs');
-        const existing = await new Promise((resolve) => {
-            const req = store.get(oldId);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => resolve(null);
-        });
-        if (existing?.blob) {
-            store.put({ blobId: newId, blob: existing.blob });
-            store.delete(oldId);
-        }
-        await new Promise((resolve, reject) => {
-            tx.oncomplete = resolve;
-            tx.onerror = () => reject(tx.error);
-        });
-    } catch (e) {
-        console.warn('Failed to move blob:', e);
-    }
 }
 
 async function saveAllNotesToDB() {
@@ -413,38 +320,12 @@ async function saveAllNotesToDB() {
     tx.commit();
 }
 
-// Scoped save for a single folder's notes — avoids clearing/rewriting the
-// notes of every other folder for a one-note favourite/rename/delete.
-async function saveNotesForFolder(folderPath) {
-    const tx = db.transaction('notes', 'readwrite');
-    const store = tx.objectStore('notes');
-    const notes = allNotes[folderPath];
-    if (!notes || !notes.length) {
-        store.delete(folderPath);
-    } else {
-        store.put({ id: folderPath, folderPath, notes });
-    }
-    await new Promise((resolve, reject) => {
-        tx.oncomplete = resolve;
-        tx.onerror = () => reject(tx.error);
-    });
-}
-
 // ============================================================
 // FILE DATA LOADING (LAZY)
 // ============================================================
 
 async function loadFileData(folderPath, fileName) {
     try {
-        // Native storage first — this is the fast path on Android/iOS builds.
-        const meta = allFiles[folderPath]?.find(f => f.name === fileName);
-        if (meta?.fsPath) {
-            const blob = await readBlobFromFS(meta.fsPath);
-            if (blob instanceof Blob) return blob;
-            // fsPath recorded but the read failed (e.g. file missing) —
-            // fall through to the IndexedDB paths below as a safety net.
-        }
-
         // Try the dedicated blobs store first
         const blobId = folderPath + '/' + fileName;
         const blobTx = db.transaction('blobs', 'readonly');
@@ -576,10 +457,9 @@ async function loadAllFileMetadata() {
                 uploadedAt: f.uploadedAt || Date.now(),
                 favourite: f.favourite || false,
                 size: size,
-                fsPath: f.fsPath || null,
                 fileData: f.fileData instanceof Blob ? f.fileData : null,
                 dataUrl: f.dataUrl || null,
-                _hasData: !!(f.fsPath || f.fileData instanceof Blob || f.dataUrl),
+                _hasData: !!(f.fileData instanceof Blob || f.dataUrl),
                 _isBase64: !!(f.dataUrl && typeof f.dataUrl === 'string')
             };
         });
@@ -665,168 +545,8 @@ async function migrateBase64ToBlob() {
 }
 
 // ============================================================
-// NATIVE FILE STORAGE (Capacitor Filesystem)
-// ------------------------------------------------------------
-// Large PDFs used to live entirely inside IndexedDB's blob store.
-// Android WebView's IndexedDB implementation is slow for big binaries
-// (every read/write goes through structured-clone), which is a real
-// contributor to sluggish opens/zoom on large files. On native builds
-// we now store the actual PDF bytes as real files in the app's private
-// storage (Directory.Data) and keep IndexedDB for metadata only.
-// On the PWA/web build (no Capacitor Filesystem), everything falls
-// back to the existing IndexedDB blob path unchanged.
+// RECENTS
 // ============================================================
-
-function isNativePlatform() {
-    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-}
-
-function getFilesystemPlugin() {
-    return isNativePlatform() ? window.Capacitor?.Plugins?.Filesystem : null;
-}
-
-function blobToBase64(blob) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-}
-
-function fsPathFor(folderPath, fileName) {
-    // Filesystem paths can't safely contain the same characters a display
-    // name might; folderPath is already made of internal path segments so
-    // it's safe as-is, filenames are used as leaf segments verbatim.
-    return 'docs/' + folderPath + '/' + fileName;
-}
-
-// Writes a blob to native storage. Returns the fsPath on success, or null
-// if unavailable/failed — callers should fall back to the IndexedDB blob
-// store when this returns null.
-async function writeFileToFS(folderPath, fileName, blob) {
-    const Filesystem = getFilesystemPlugin();
-    if (!Filesystem) return null;
-    try {
-        const base64 = await blobToBase64(blob);
-        const path = fsPathFor(folderPath, fileName);
-        await Filesystem.writeFile({ path, data: base64, directory: 'DATA', recursive: true });
-
-        // Verify: read it straight back before trusting this write. If this
-        // fails, the caller must NOT delete any existing copy of the file —
-        // better to leave it on IndexedDB than lose it to a silent native
-        // write failure (seen on some devices/WebView configs).
-        const verifyBlob = await readBlobFromFS(path);
-        if (!(verifyBlob instanceof Blob) || verifyBlob.size !== blob.size) {
-            console.warn('Native write verification failed for', path, '— keeping existing copy.');
-            try { await Filesystem.deleteFile({ path, directory: 'DATA' }); } catch (e) { /* best effort cleanup */ }
-            return null;
-        }
-        return path;
-    } catch (e) {
-        console.warn('Native file write failed, falling back to IndexedDB:', e);
-        return null;
-    }
-}
-
-// Reads a blob back from native storage using Capacitor.convertFileSrc +
-// fetch, which hands back a real Blob without a base64 decode round-trip
-// in JS — this is the actual speed win over IndexedDB for big PDFs.
-async function readBlobFromFS(fsPath) {
-    const Filesystem = getFilesystemPlugin();
-    if (!Filesystem || !fsPath) return null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-            const uriResult = await Filesystem.getUri({ path: fsPath, directory: 'DATA' });
-            const fileSrc = window.Capacitor.convertFileSrc(uriResult.uri);
-            const resp = await fetch(fileSrc);
-            if (!resp.ok) throw new Error('fetch failed: ' + resp.status);
-            return await resp.blob();
-        } catch (e) {
-            if (attempt === 0) {
-                await new Promise(r => setTimeout(r, 150));
-                continue;
-            }
-            console.warn('Native file read failed:', e);
-            return null;
-        }
-    }
-    return null;
-}
-
-async function deleteFileFromFS(fsPath) {
-    const Filesystem = getFilesystemPlugin();
-    if (!Filesystem || !fsPath) return;
-    try {
-        await Filesystem.deleteFile({ path: fsPath, directory: 'DATA' });
-    } catch (e) {
-        // File may already be gone — not fatal.
-        console.warn('Native file delete failed (may not exist):', e);
-    }
-}
-
-async function moveFileInFS(oldPath, newPath) {
-    const Filesystem = getFilesystemPlugin();
-    if (!Filesystem || !oldPath) return false;
-    if (oldPath === newPath) return true;
-    try {
-        await Filesystem.rename({ from: oldPath, to: newPath, directory: 'DATA', toDirectory: 'DATA' });
-        return true;
-    } catch (e) {
-        console.warn('Native file rename failed:', e);
-        return false;
-    }
-}
-
-// Background, one-file-at-a-time migration of existing IndexedDB-stored
-// blobs onto native storage. Runs after startup on native builds only.
-// Deliberately sequential with no artificial delay removed between awaits
-// so it never blocks the main thread for a long stretch — each file's
-// write yields back to the event loop naturally via await.
-let migrationInProgress = false;
-async function migrateFilesToNativeStorage() {
-    if (!isNativePlatform() || migrationInProgress) return;
-    migrationInProgress = true;
-    let migrated = 0;
-    try {
-        for (const folderPath of Object.keys(allFiles)) {
-            const files = allFiles[folderPath] || [];
-            for (let i = 0; i < files.length; i++) {
-                const f = files[i];
-                if (f.fsPath) continue; // already migrated
-                const blob = await loadFileData(folderPath, f.name);
-                if (!(blob instanceof Blob)) continue;
-                const fsPath = await writeFileToFS(folderPath, f.name, blob);
-                if (!fsPath) continue; // FS unavailable/failed — leave on IndexedDB
-                const oldName = f.name;
-                files[i] = {
-                    name: f.name,
-                    type: f.type || blob.type || 'application/octet-stream',
-                    uploadedAt: f.uploadedAt || Date.now(),
-                    favourite: f.favourite || false,
-                    size: blob.size,
-                    fsPath
-                };
-                // Persist the pointer to the new copy BEFORE touching the old
-                // one. If the app is killed between these two lines, the
-                // worst case is a harmless orphaned IndexedDB blob -- never
-                // a file whose only saved location has already been erased.
-                await saveFilesForFolder(folderPath);
-                await deleteBlobFromDB(folderPath, oldName);
-                migrated++;
-            }
-        }
-        if (migrated > 0) {
-            console.log(`✅ Migrated ${migrated} file(s) to native storage`);
-        }
-    } catch (e) {
-        console.warn('Background migration to native storage failed:', e);
-    } finally {
-        migrationInProgress = false;
-    }
-}
-
-
 
 function loadRecents() {
     try { return JSON.parse(localStorage.getItem(RECENTS_KEY)) || []; } catch (e) { return []; }
@@ -1011,26 +731,16 @@ async function addFileToCurrentFolder(file) {
     const folderPath = currentPath.join('/');
     if (!allFiles[folderPath]) allFiles[folderPath] = [];
 
-    const fsPath = await writeFileToFS(folderPath, file.name, file);
-    const fileObj = fsPath
-        ? {
-            name: file.name,
-            type: file.type || 'application/octet-stream',
-            uploadedAt: Date.now(),
-            favourite: false,
-            size: file.size,
-            fsPath
-        }
-        : {
-            name: file.name,
-            type: file.type || 'application/octet-stream',
-            fileData: file,
-            uploadedAt: Date.now(),
-            favourite: false,
-            size: file.size
-        };
+    const fileObj = {
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        fileData: file,
+        uploadedAt: Date.now(),
+        favourite: false,
+        size: file.size
+    };
     allFiles[folderPath].push(fileObj);
-    await saveFilesForFolder(folderPath);
+    await saveAllFilesToDB();
     haptic.success();
 }
 
@@ -1039,33 +749,22 @@ function deleteFileFromFolder(folderPath, fileName) {
         if (confirmed) {
             haptic.warning();
             if (allFiles[folderPath]) {
-                const entry = allFiles[folderPath].find(f => f.name === fileName);
                 allFiles[folderPath] = allFiles[folderPath].filter(f => f.name !== fileName);
                 if (!allFiles[folderPath].length) delete allFiles[folderPath];
-                saveFilesForFolder(folderPath);
-                if (entry?.fsPath) deleteFileFromFS(entry.fsPath);
-                else deleteBlobFromDB(folderPath, fileName);
+                saveAllFilesToDB();
                 render();
             }
         }
     });
 }
 
-async function renameFileInFolder(folderPath, oldName, newName) {
+function renameFileInFolder(folderPath, oldName, newName) {
     if (!newName?.trim()) return showToast("Name empty", true);
     if (allFiles[folderPath]) {
         const idx = allFiles[folderPath].findIndex(f => f.name === oldName);
         if (idx !== -1) {
-            const entry = allFiles[folderPath][idx];
-            if (entry.fsPath) {
-                const newFsPath = fsPathFor(folderPath, newName);
-                const ok = await moveFileInFS(entry.fsPath, newFsPath);
-                if (ok) entry.fsPath = newFsPath;
-            } else {
-                await renameBlobInDB(folderPath, oldName, folderPath, newName);
-            }
-            entry.name = newName;
-            await saveFilesForFolder(folderPath);
+            allFiles[folderPath][idx].name = newName;
+            saveAllFilesToDB();
             render();
         }
     }
@@ -1087,7 +786,7 @@ async function addNoteToCurrentFolder(title, content) {
         favourite: false
     };
     allNotes[folderPath].push(note);
-    await saveNotesForFolder(folderPath);
+    await saveAllNotesToDB();
     render();
 }
 
@@ -1097,7 +796,7 @@ async function updateNote(folderPath, noteId, title, content) {
         allNotes[folderPath][idx].title = title.trim();
         allNotes[folderPath][idx].content = content.trim();
         allNotes[folderPath][idx].updatedAt = new Date().toISOString();
-        await saveNotesForFolder(folderPath);
+        await saveAllNotesToDB();
         render();
         return true;
     }
@@ -1109,7 +808,7 @@ async function renameNote(folderPath, noteId, newTitle) {
     const idx = allNotes[folderPath]?.findIndex(n => n.id === noteId);
     if (idx !== -1) {
         allNotes[folderPath][idx].title = newTitle.trim();
-        await saveNotesForFolder(folderPath);
+        await saveAllNotesToDB();
         render();
     }
 }
@@ -1118,7 +817,7 @@ async function deleteNoteFromFolder(folderPath, noteId) {
     if (allNotes[folderPath]) {
         allNotes[folderPath] = allNotes[folderPath].filter(n => n.id !== noteId);
         if (!allNotes[folderPath].length) delete allNotes[folderPath];
-        await saveNotesForFolder(folderPath);
+        await saveAllNotesToDB();
         render();
     }
 }
@@ -1176,20 +875,6 @@ function closeNoteModal() {
 
 async function openFileWithGesture(fileEntry, folderPath) {
     trackRecentFile(fileEntry.name);
-
-    // Inside the Capacitor Android WebView, navigator.share() is unreliable —
-    // on many WebView builds it either doesn't exist, or silently no-ops
-    // (no resolve, no reject, no native chooser). The native Capacitor Share
-    // plugin (Filesystem.writeFile + Share.share) is what actually works, so
-    // on native platforms we go straight there and skip navigator.share().
-    if (isNativePlatform()) {
-        const fileData = fileEntry.fileData instanceof Blob
-            ? fileEntry.fileData
-            : await loadFileData(folderPath, fileEntry.name);
-        if (!fileData) { showToast('File not found or could not be loaded', true); return; }
-        await nativeDownload(fileData, fileEntry.name);
-        return;
-    }
 
     // If blob is already in memory, share immediately — zero async gap
     if (fileEntry.fileData instanceof Blob) {
@@ -1299,41 +984,28 @@ function closeImageViewer() {
 }
 
 // ============================================================
-// PDF HANDLING - OPTIMIZED FOR LARGE PDFs
+// PDF HANDLING - FIXED
 // ============================================================
 
 let isSharing = false;
 let shareTimeout = null;
 
 async function handlePdfFile(fileData, fileName) {
-    let openMode = docmanSettings.pdfOpen || 'docman';
+    const openMode = docmanSettings.pdfOpen || 'external';
 
-    // NATIVE ANDROID: hand off to the native PdfiumAndroid viewer.
-    // Renders outside the WebView — smooth zoom + big PDFs, no lag.
-    if (openMode === 'docman' && isNativePlatform() && isAndroid() && window.Capacitor?.Plugins?.PdfNative) {
-        await openPdfViewerNative(fileData, fileName);
+    // Samsung Internet blocks Web Share API with files on github.io (NotAllowedError).
+    // Force built-in viewer on Samsung Internet regardless of the external setting.
+    // iOS, Chrome, and all other browsers are unaffected.
+    if (isSamsungBrowser()) {
+        openPdfViewer(fileData, fileName);
         return;
     }
 
-    // There is no in-app PDF rendering engine outside the native Android
-    // app. Everywhere else (iOS, desktop browser, Android browser/PWA, or
-    // if the native plugin isn't available for some reason) hand the file
-    // to the system's own PDF viewer / share sheet instead.
-    if (openMode === 'docman' && !window._docmanViewerUnavailableWarned) {
-        window._docmanViewerUnavailableWarned = true;
-        showToast('Built-in viewer is only available in the DOCMAN Android app — opening externally.', false);
+    if (openMode === 'docman') {
+        openPdfViewer(fileData, fileName);
+    } else {
+        await sharePdfExternally(fileData, fileName);
     }
-
-    await sharePdfExternally(fileData, fileName);
-}
-
-function isIOS() {
-    // Covers iPhone/iPad Safari and Chrome-for-iOS (which is WebKit under the
-    // hood too -- Apple requires all iOS browsers to use WebKit). Also catches
-    // iPadOS 13+ which reports as "Macintosh" but exposes touch support, unlike
-    // real Macs.
-    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
 function isAndroid() {
@@ -1345,16 +1017,7 @@ function isSamsungBrowser() {
 }
 
 async function sharePdfExternally(fileData, fileName) {
-    // On native (Capacitor) Android, the WebView's navigator.share() is
-    // unreliable — it can silently no-op instead of throwing. The native
-    // Capacitor Share plugin reliably triggers the OS chooser, so use that
-    // directly whenever we're actually running as a native app.
-    if (isNativePlatform()) {
-        await nativeDownload(fileData, fileName);
-        return;
-    }
-
-    // ── Android (mobile browser / PWA, not native wrapper) ──────────────────────
+    // ── Android ───────────────────────────────────────────────────────────────
     // blob: URLs are origin-scoped; default Android browsers treat any attempt
     // to open one in a new tab as a download.  The only approach that reliably
     // triggers the OS "Open with…" chooser across Chrome, Samsung Internet,
@@ -1490,23 +1153,171 @@ function downloadPdf(fileData, fileName) {
 }
 
 // ============================================================
-// NATIVE ANDROID PDF VIEWER (PdfiumAndroid — renders outside WebView)
+// BUILT-IN PDF VIEWER - FIXED
 // ============================================================
-async function openPdfViewerNative(fileData, fileName) {
-    const PdfNative = window.Capacitor?.Plugins?.PdfNative;
-    const Filesystem = getFilesystemPlugin();
-    if (!PdfNative || !Filesystem) { await sharePdfExternally(fileData, fileName); return; }
-    try {
-        const base64 = await blobToBase64(fileData);
-        const tmpPath = 'docman-view.pdf';
-        await Filesystem.writeFile({ path: tmpPath, data: base64, directory: 'CACHE' });
-        const { uri } = await Filesystem.getUri({ path: tmpPath, directory: 'CACHE' });
-        await PdfNative.openPdf({ path: uri, title: fileName });
-    } catch (e) {
-        console.warn('Native PDF viewer failed, falling back to external share:', e);
-        await sharePdfExternally(fileData, fileName);
+function openPdfViewer(fileData, fileName) {
+    const existing = document.getElementById('pdfViewer');
+    if (existing) {
+        if (existing._url) URL.revokeObjectURL(existing._url);
+        existing.remove();
+    }
+
+    const url = URL.createObjectURL(fileData);
+    const docId = 'docman-doc-' + Date.now();
+
+    const viewer = document.createElement('div');
+    viewer.id = 'pdfViewer';
+    viewer.className = 'pdf-viewer';
+    viewer.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1a1a1a;display:flex;flex-direction:column;';
+
+    viewer.innerHTML = `
+        <div class="pdf-viewer-header" style="padding:12px 16px;padding-top:max(12px, env(safe-area-inset-top));background:rgba(0,0,0,0.8);border-bottom:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;flex-shrink:0;z-index:2;min-height:52px;touch-action:manipulation;">
+            <button onclick="closePdfViewer()" ontouchstart="" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:8px;color:#ef4444;padding:6px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:Inter,sans-serif;letter-spacing:0.02em;touch-action:manipulation;flex-shrink:0;">
+                Close
+            </button>
+            <span class="pdf-viewer-title" style="flex:1;color:#e2e8f0;font-size:0.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;">${escapeHtml(fileName)}</span>
+            <div id="pdfZoomControls" style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
+                <button id="pdfZoomOutBtn" title="Zoom out" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-minus" style="font-size:0.7rem;"></i></button>
+                <span id="pdfZoomLabel" style="color:#94a3b8;font-size:0.75rem;font-weight:600;width:44px;text-align:center;font-family:Inter,sans-serif;">100%</span>
+                <button id="pdfZoomInBtn" title="Zoom in" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-plus" style="font-size:0.7rem;"></i></button>
+                <button id="pdfFitWidthBtn" title="Fit width" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;margin-left:4px;"><i class="fas fa-arrows-left-right" style="font-size:0.7rem;"></i></button>
+                <button id="pdfFitPageBtn" title="Fit page" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e2e8f0;width:30px;height:30px;cursor:pointer;touch-action:manipulation;"><i class="fas fa-expand" style="font-size:0.7rem;"></i></button>
+            </div>
+        </div>
+        <div id="pdfViewerBody" style="flex:1;position:relative;background:#2a2a2a;overflow:hidden;">
+            <div id="embedpdfContainer" style="width:100%;height:100%;"></div>
+            <div id="pdfLoadingMsg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-family:Inter,sans-serif;font-size:0.9rem;pointer-events:none;">Loading PDF…</div>
+        </div>
+    `;
+
+    document.body.appendChild(viewer);
+    viewer._url = url;
+    viewer._fileName = fileName;
+    viewer._fileData = fileData;
+
+    const escHandler = function(e) {
+        if (e.key === 'Escape') {
+            closePdfViewer();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+    viewer._escHandler = escHandler;
+
+    renderPdfWithEmbedPdf(url, docId, fileName);
+
+}
+
+// ============================================================
+// EmbedPDF (PDFium/WASM) rendering engine
+// ------------------------------------------------------------
+// Replaces the old pdf.js canvas + manual pinch-zoom engine.
+// EmbedPDF ships its own virtualized scrolling, native-feeling
+// pinch/wheel zoom, and fit-width/fit-page handling, so none of
+// that needs to be hand-rolled here anymore.
+// ============================================================
+
+const EMBEDPDF_CDN = 'https://cdn.jsdelivr.net/npm/@embedpdf/snippet@2.14.4/dist/embedpdf.js';
+let embedPdfModulePromise = null;
+
+function loadEmbedPdfModule() {
+    if (!embedPdfModulePromise) {
+        embedPdfModulePromise = import(/* webpackIgnore: true */ EMBEDPDF_CDN);
+    }
+    return embedPdfModulePromise;
+}
+
+function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
+    const container = document.getElementById('embedpdfContainer');
+    const loadingMsg = document.getElementById('pdfLoadingMsg');
+    const viewerEl = document.getElementById('pdfViewer');
+    if (!container || !viewerEl) return;
+
+    loadEmbedPdfModule().then(function(mod) {
+        // Bail out silently if the viewer was closed while the module was loading.
+        if (!document.body.contains(viewerEl)) return;
+
+        const EmbedPDF = mod.default;
+        const ZoomMode = mod.ZoomMode;
+
+        const instance = EmbedPDF.init({
+            type: 'container',
+            target: container,
+            theme: { preference: 'dark' },
+            zoom: { defaultZoomLevel: ZoomMode.FitWidth },
+            documentManager: {
+                initialDocuments: [{ url: pdfUrl, documentId: docId, name: fileName }]
+            }
+        });
+        viewerEl._embedPdfInstance = instance;
+
+        instance.registry.then(function(registry) {
+            if (loadingMsg) loadingMsg.remove();
+            if (!document.body.contains(viewerEl)) return;
+
+            const zoomApi = registry.getPlugin('zoom')?.provides()?.forDocument(docId);
+            if (!zoomApi) return;
+
+            const zoomLabel = document.getElementById('pdfZoomLabel');
+            const zoomInBtn = document.getElementById('pdfZoomInBtn');
+            const zoomOutBtn = document.getElementById('pdfZoomOutBtn');
+            const fitWidthBtn = document.getElementById('pdfFitWidthBtn');
+            const fitPageBtn = document.getElementById('pdfFitPageBtn');
+
+            function refreshZoomLabel() {
+                if (!zoomLabel) return;
+                const state = zoomApi.getState();
+                zoomLabel.textContent = Math.round(state.currentZoomLevel * 100) + '%';
+            }
+
+            zoomApi.onStateChange(refreshZoomLabel);
+            refreshZoomLabel();
+
+            if (zoomInBtn) zoomInBtn.addEventListener('click', function() { zoomApi.zoomIn(); });
+            if (zoomOutBtn) zoomOutBtn.addEventListener('click', function() { zoomApi.zoomOut(); });
+            if (fitWidthBtn) fitWidthBtn.addEventListener('click', function() { zoomApi.requestZoom(ZoomMode.FitWidth); });
+            if (fitPageBtn) fitPageBtn.addEventListener('click', function() { zoomApi.requestZoom(ZoomMode.FitPage); });
+        });
+    }).catch(function(err) {
+        console.error('EmbedPDF failed to load', err);
+        if (loadingMsg) {
+            loadingMsg.style.pointerEvents = 'auto';
+            loadingMsg.textContent = 'Could not load the PDF engine. Check your internet connection and try again.';
+        }
+    });
+}
+
+
+
+
+function closePdfViewer() {
+    const viewer = document.getElementById('pdfViewer');
+    if (viewer) {
+        if (viewer._url) {
+            URL.revokeObjectURL(viewer._url);
+        }
+        if (viewer._escHandler) {
+            document.removeEventListener('keydown', viewer._escHandler);
+        }
+        viewer.remove();
+        isSharing = false;
+        if (shareTimeout) {
+            clearTimeout(shareTimeout);
+            shareTimeout = null;
+        }
     }
 }
+
+function downloadPdfFromViewer() {
+    const viewer = document.getElementById('pdfViewer');
+    if (viewer && viewer._url && viewer._fileName) {
+        downloadPdf(viewer._fileData || viewer._url, viewer._fileName);
+    }
+}
+
+// Expose PDF viewer functions to window
+window.closePdfViewer = closePdfViewer;
+window.downloadPdfFromViewer = downloadPdfFromViewer;
 
 // ============================================================
 // CONTEXT MENU
@@ -1634,7 +1445,7 @@ function createFileCard(file, folderPath) {
                     const ind = div.querySelector('.card-fav-indicator');
                     if (ind) ind.classList.toggle('card-fav-hidden', !file.favourite);
                     haptic.toggle();
-                    await saveFilesForFolder(folderPath);
+                    await saveAllFilesToDB();
                     updateStats();
                     render();
                     showToast(file.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
@@ -1679,7 +1490,9 @@ function createFileCard(file, folderPath) {
         cancelPress();
         if (!longPressTriggered && !isScrolling && Date.now() - touchStartTime < 300) {
             tappedByTouch = true;
-            if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'docman') === 'external') {
+            // For PDFs in external mode: call share synchronously on the gesture
+            // before any async work, so Samsung Internet trusts the user gesture.
+            if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'external') === 'external') {
                 openFileWithGesture(file, folderPath);
             } else {
                 openFile(file.name, folderPath);
@@ -1699,7 +1512,7 @@ function createFileCard(file, folderPath) {
         if (touchCount > 1) { touchCount = 0; return; }
         touchCount = 0;
         if (longPressTriggered) { longPressTriggered = false; return; }
-        if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'docman') === 'external') {
+        if (getFileType(file.name) === 'pdf' && (docmanSettings.pdfOpen || 'external') === 'external') {
             openFileWithGesture(file, folderPath);
         } else {
             openFile(file.name, folderPath);
@@ -1757,7 +1570,7 @@ function createNoteCard(note, folderPath) {
                     const ind = div.querySelector('.card-fav-indicator');
                     if (ind) ind.classList.toggle('card-fav-hidden', !note.favourite);
                     haptic.toggle();
-                    await saveNotesForFolder(folderPath);
+                    await saveAllNotesToDB();
                     updateStats();
                     render();
                     showToast(note.favourite ? '⭐ Added to favourites' : 'Removed from favourites');
@@ -1841,7 +1654,7 @@ function createCard(title, onClick, isFolder = false) {
 function renameCurrentFolder() {
     if (!currentPath.length) return;
     const old = currentPath[currentPath.length - 1];
-    showPromptModal('Rename folder:', old, async (newName) => {
+    showPromptModal('Rename folder:', old, (newName) => {
         if (newName && newName !== old && newName.trim()) {
             const parent = currentPath.slice(0, -1).reduce((o, p) => o[p], fileSystem);
 
@@ -1856,19 +1669,8 @@ function renameCurrentFolder() {
 
             const oldPath = currentPath.join('/');
             const newPath = [...currentPath.slice(0, -1), newName].join('/');
-            if (allFiles[oldPath]) {
-                allFiles[newPath] = allFiles[oldPath];
-                delete allFiles[oldPath];
-                await Promise.all(allFiles[newPath].map(async f => {
-                    if (f.fsPath) {
-                        const newFsPath = fsPathFor(newPath, f.name);
-                        const ok = await moveFileInFS(f.fsPath, newFsPath);
-                        if (ok) f.fsPath = newFsPath;
-                    } else {
-                        await renameBlobInDB(oldPath, f.name, newPath, f.name);
-                    }
-                }));
-            }
+            if (allFiles[oldPath]) { allFiles[newPath] = allFiles[oldPath];
+                delete allFiles[oldPath]; }
             if (allNotes[oldPath]) { allNotes[newPath] = allNotes[oldPath];
                 delete allNotes[oldPath]; }
 
@@ -1889,13 +1691,7 @@ function deleteCurrentFolder() {
             const path = currentPath.join('/');
             const prefix = path + '/';
             for (const k of Object.keys(allFiles)) {
-                if (k === path || k.startsWith(prefix)) {
-                    for (const f of allFiles[k]) {
-                        if (f.fsPath) deleteFileFromFS(f.fsPath);
-                        else deleteBlobFromDB(k, f.name);
-                    }
-                    delete allFiles[k];
-                }
+                if (k === path || k.startsWith(prefix)) delete allFiles[k];
             }
             for (const k of Object.keys(allNotes)) {
                 if (k === path || k.startsWith(prefix)) delete allNotes[k];
@@ -2499,7 +2295,7 @@ function openFavouritesView() {
                     e.stopPropagation();
                     const arr = allFiles[folderPath];
                     if (arr) { const f2 = arr.find(x => x.name === file.name); if (f2) f2.favourite = false; }
-                    await saveFilesForFolder(folderPath);
+                    await saveAllFilesToDB();
                     updateStats();
                     render();
                     row.classList.add('fav-row-removing');
@@ -2536,7 +2332,7 @@ function openFavouritesView() {
                     e.stopPropagation();
                     const arr = allNotes[folderPath];
                     if (arr) { const n2 = arr.find(x => x.id === note.id); if (n2) n2.favourite = false; }
-                    await saveNotesForFolder(folderPath);
+                    await saveAllNotesToDB();
                     updateStats();
                     render();
                     row.classList.add('fav-row-removing');
@@ -2553,6 +2349,9 @@ function openFavouritesView() {
         }
     }
 
+    document.getElementById('departmentsSection').style.display = 'none';
+    document.getElementById('content').style.display = 'none';
+    document.getElementById('breadcrumb').style.display = 'none';
     document.getElementById('searchInfo').classList.add('hidden');
 
     const favView = document.getElementById('favouritesView');
@@ -2560,7 +2359,6 @@ function openFavouritesView() {
     requestAnimationFrame(() => favView.classList.add('fav-view-visible'));
 
     document.getElementById('favViewBackBtn').onclick = closeFavouritesView;
-    attachPressEffects();
 }
 
 function checkFavEmpty(list) {
@@ -2574,7 +2372,10 @@ function checkFavEmpty(list) {
 function closeFavouritesView() {
     const favView = document.getElementById('favouritesView');
     favView.classList.remove('fav-view-visible');
-    setTimeout(() => favView.classList.add('hidden'), 150);
+    setTimeout(() => favView.classList.add('hidden'), 260);
+    document.getElementById('departmentsSection').style.display = '';
+    document.getElementById('content').style.display = '';
+    document.getElementById('breadcrumb').style.display = '';
 }
 
 // ============================================================
@@ -2660,7 +2461,7 @@ function applyParticles() {
 }
 
 function applyRadioUI(radioName) {
-    const val = docmanSettings[radioName] || 'docman';
+    const val = docmanSettings[radioName] || 'external';
     document.querySelectorAll(`[data-radio="${radioName}"]`).forEach(dot => {
         dot.classList.toggle('active', dot.getAttribute('data-val') === val);
     });
@@ -2884,7 +2685,7 @@ function importBackupData(file) {
                 await saveFolderStructure();
                 await saveDeptColors();
                 await saveAllNotesToDB();
-                await saveAllFilesToDB(true);
+                await saveAllFilesToDB();
                 await loadAllFileMetadata();
 
                 currentPath = [];
@@ -3270,6 +3071,23 @@ function initSettingsPage() {
     });
     applyRadioUI('pdfOpen');
 
+    const thresholdVal = document.getElementById('pdfThresholdVal');
+    thresholdVal.textContent = docmanSettings.pdfThreshold;
+    document.getElementById('pdfThresholdDown').onclick = () => {
+        if (docmanSettings.pdfThreshold > 1) {
+            docmanSettings.pdfThreshold--;
+            thresholdVal.textContent = docmanSettings.pdfThreshold;
+            saveSettings();
+        }
+    };
+    document.getElementById('pdfThresholdUp').onclick = () => {
+        if (docmanSettings.pdfThreshold < 500) {
+            docmanSettings.pdfThreshold++;
+            thresholdVal.textContent = docmanSettings.pdfThreshold;
+            saveSettings();
+        }
+    };
+
     // Favorites & Recents
     const showRecentsToggle = document.getElementById('showRecentsToggle');
     showRecentsToggle.checked = docmanSettings.showRecents;
@@ -3445,8 +3263,7 @@ function attachPressEffects() {
         '.rename-file-btn', '.delete-file-btn', '.rename-note-btn',
         '.delete-note-btn', '.clear-search', '.modal-close',
         '.modal-footer button', '.breadcrumb-item', '.card', '.dept-oval',
-        '#closeImageViewer', '#favViewBackBtn', '.fav-row-unfav', '.fav-row',
-        '#favStatItem'
+        '#closeImageViewer'
     ];
 
     document.querySelectorAll(selectors.join(',')).forEach(el => {
@@ -3455,6 +3272,7 @@ function attachPressEffects() {
         el.removeEventListener('mousedown', pressHandler);
         el.addEventListener('mousedown', pressHandler);
         el.addEventListener('touchstart', pressHandler, { passive: false });
+        if (window.getComputedStyle(el).cursor === 'auto') el.style.cursor = 'pointer';
     });
 }
 
@@ -3465,7 +3283,6 @@ function pressHandler(e) {
         this.setAttribute('data-touch-processing', 'true');
         setTimeout(() => this.removeAttribute('data-touch-processing'), 200);
     }
-    e.stopPropagation();
     addDepthEffect(this, e);
 }
 
@@ -3647,6 +3464,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeImageViewer();
+            closePdfViewer();
         }
     });
 
@@ -3738,14 +3556,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         await migrateBase64ToBlob();
                         localStorage.setItem('docman_migration_done', 'true');
                     }, 1500);
-                }
-
-                // Move any remaining IndexedDB-stored PDFs onto native
-                // storage. Safe to run every launch — files already
-                // migrated (have fsPath) are skipped instantly, so this
-                // naturally becomes a no-op once everything's converted.
-                if (isNativePlatform()) {
-                    setTimeout(() => { migrateFilesToNativeStorage(); }, 3000);
                 }
 
                 window.docmanReady = true;
