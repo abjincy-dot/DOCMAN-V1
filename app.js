@@ -1217,14 +1217,24 @@ function openPdfViewer(fileData, fileName) {
 // that needs to be hand-rolled here anymore.
 // ============================================================
 
-const EMBEDPDF_CDN = 'https://cdn.jsdelivr.net/npm/@embedpdf/snippet@2.14.4/dist/embedpdf.js';
+// Self-hosted EmbedPDF (no CDN): the JS bundle AND the 4.6 MB pdfium.wasm
+// live in ./vendor/embedpdf/ and are pre-cached by the service worker, so
+// opening a PDF never waits on the network anymore.
+const EMBEDPDF_LOCAL = new URL('vendor/embedpdf/embedpdf.js', window.location.href).href;
+const PDFIUM_WASM_LOCAL = new URL('vendor/embedpdf/pdfium.wasm', window.location.href).href;
 let embedPdfModulePromise = null;
 
 function loadEmbedPdfModule() {
     if (!embedPdfModulePromise) {
-        embedPdfModulePromise = import(/* webpackIgnore: true */ EMBEDPDF_CDN);
+        embedPdfModulePromise = import(/* webpackIgnore: true */ EMBEDPDF_LOCAL);
     }
     return embedPdfModulePromise;
+}
+
+// Warm up the engine in the background shortly after app start, so the very
+// first PDF open doesn't pay the module-load + WASM-compile cost.
+function preloadPdfEngine() {
+    try { loadEmbedPdfModule().catch(function(){ embedPdfModulePromise = null; }); } catch (e) {}
 }
 
 function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
@@ -1245,6 +1255,13 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
             target: container,
             theme: { preference: 'dark' },
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
+            // Local WASM instead of jsDelivr CDN — this was the main source
+            // of the multi-second lag on every PDF open.
+            wasmUrl: PDFIUM_WASM_LOCAL,
+            // Don't fetch stamp manifests or fallback fonts from the CDN;
+            // both can hang the loader on slow/absent networks.
+            stamp: { manifests: [] },
+            fontFallback: null,
             documentManager: {
                 initialDocuments: [{ url: pdfUrl, documentId: docId, name: fileName }]
             }
@@ -3435,6 +3452,10 @@ function initImageViewerGestures() {
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // Warm up the PDF engine (self-hosted, so this is cheap and offline-safe).
+    // Deferred slightly so it never competes with first paint.
+    setTimeout(preloadPdfEngine, 1500);
+
     // Inject version
     const vEls = ['aboutVersionBadge', 'aboutVersionRow', 'deptInfoVersion'];
     vEls.forEach(id => {
