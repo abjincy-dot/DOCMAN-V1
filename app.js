@@ -1217,24 +1217,53 @@ function openPdfViewer(fileData, fileName) {
 // that needs to be hand-rolled here anymore.
 // ============================================================
 
-// Self-hosted EmbedPDF (no CDN): the JS bundle AND the 4.6 MB pdfium.wasm
-// live in ./vendor/embedpdf/ and are pre-cached by the service worker, so
-// opening a PDF never waits on the network anymore.
+// Self-hosted EmbedPDF: JS bundle + 4.6 MB pdfium.wasm live in
+// ./vendor/embedpdf/ and are pre-cached by the service worker.
+// If the local copies are missing (e.g. incomplete deploy), we fall back
+// to the jsDelivr CDN transparently instead of breaking the viewer.
 const EMBEDPDF_LOCAL = new URL('vendor/embedpdf/embedpdf.js', window.location.href).href;
 const PDFIUM_WASM_LOCAL = new URL('vendor/embedpdf/pdfium.wasm', window.location.href).href;
-let embedPdfModulePromise = null;
+const EMBEDPDF_CDN = 'https://cdn.jsdelivr.net/npm/@embedpdf/snippet@2.14.4/dist/embedpdf.js';
+const PDFIUM_WASM_CDN = 'https://cdn.jsdelivr.net/npm/@embedpdf/pdfium@2.14.4/dist/pdfium.wasm';
 
-function loadEmbedPdfModule() {
-    if (!embedPdfModulePromise) {
-        embedPdfModulePromise = import(/* webpackIgnore: true */ EMBEDPDF_LOCAL);
+let pdfEnginePromise = null;
+
+// Resolves to { mod, wasmUrl } — local copies when available, CDN otherwise.
+function loadPdfEngine() {
+    if (!pdfEnginePromise) {
+        pdfEnginePromise = (async function() {
+            let mod, wasmUrl;
+            try {
+                mod = await import(/* webpackIgnore: true */ EMBEDPDF_LOCAL);
+                wasmUrl = PDFIUM_WASM_LOCAL;
+            } catch (localErr) {
+                console.warn('Local EmbedPDF missing/broken, falling back to CDN:', localErr);
+                mod = await import(/* webpackIgnore: true */ EMBEDPDF_CDN);
+                wasmUrl = PDFIUM_WASM_CDN;
+            }
+            // If the JS loaded locally but the wasm is missing (partial deploy),
+            // switch just the wasm to the CDN copy.
+            if (wasmUrl === PDFIUM_WASM_LOCAL) {
+                try {
+                    const head = await fetch(PDFIUM_WASM_LOCAL, { method: 'HEAD' });
+                    if (!head.ok) throw new Error('local wasm HTTP ' + head.status);
+                } catch (wasmErr) {
+                    console.warn('Local pdfium.wasm unavailable, using CDN wasm:', wasmErr);
+                    wasmUrl = PDFIUM_WASM_CDN;
+                }
+            }
+            return { mod: mod, wasmUrl: wasmUrl };
+        })();
+        // Allow a retry on the next open if everything failed.
+        pdfEnginePromise.catch(function() { pdfEnginePromise = null; });
     }
-    return embedPdfModulePromise;
+    return pdfEnginePromise;
 }
 
 // Warm up the engine in the background shortly after app start, so the very
 // first PDF open doesn't pay the module-load + WASM-compile cost.
 function preloadPdfEngine() {
-    try { loadEmbedPdfModule().catch(function(){ embedPdfModulePromise = null; }); } catch (e) {}
+    try { loadPdfEngine().catch(function(){}); } catch (e) {}
 }
 
 function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
@@ -1243,7 +1272,8 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
     const viewerEl = document.getElementById('pdfViewer');
     if (!container || !viewerEl) return;
 
-    loadEmbedPdfModule().then(function(mod) {
+    loadPdfEngine().then(function(engine) {
+        const mod = engine.mod;
         // Bail out silently if the viewer was closed while the module was loading.
         if (!document.body.contains(viewerEl)) return;
 
@@ -1255,9 +1285,9 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
             target: container,
             theme: { preference: 'dark' },
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
-            // Local WASM instead of jsDelivr CDN — this was the main source
-            // of the multi-second lag on every PDF open.
-            wasmUrl: PDFIUM_WASM_LOCAL,
+            // Local WASM when available (main source of the old per-open
+            // multi-second lag); CDN fallback if the deploy is incomplete.
+            wasmUrl: engine.wasmUrl,
             // Don't fetch stamp manifests or fallback fonts from the CDN;
             // both can hang the loader on slow/absent networks.
             stamp: { manifests: [] },
@@ -1299,7 +1329,9 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
         console.error('EmbedPDF failed to load', err);
         if (loadingMsg) {
             loadingMsg.style.pointerEvents = 'auto';
-            loadingMsg.textContent = 'Could not load the PDF engine. Check your internet connection and try again.';
+            loadingMsg.style.padding = '0 24px';
+            loadingMsg.style.textAlign = 'center';
+            loadingMsg.textContent = 'Could not load the PDF engine: ' + (err && err.message ? err.message : err);
         }
     });
 }
