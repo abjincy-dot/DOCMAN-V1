@@ -990,8 +990,34 @@ function closeImageViewer() {
 let isSharing = false;
 let shareTimeout = null;
 
+// iOS / iPadOS / macOS Safari — WebKit gives a page a hard memory ceiling.
+// The WASM PDF engine + a large document can exceed it, at which point
+// WebKit kills the page (white screen -> reload). Detect it so we can
+// route big files to the native Quick Look viewer instead.
+function isAppleWebKit() {
+    const ua = navigator.userAgent;
+    // Every browser on iOS/iPadOS is WebKit under the hood, brand aside.
+    const isIOS = /iPhone|iPad|iPod/.test(ua);
+    const isTouchMac = ua.includes('Macintosh') && navigator.maxTouchPoints > 1; // iPadOS pretending to be a Mac
+    // Desktop Safari: WebKit UA without the Chrome/Chromium/Edge/Firefox markers.
+    const isDesktopSafari = ua.includes('Macintosh') && ua.includes('Safari') && !/Chrome|Chromium|Edg|Firefox/.test(ua);
+    return isIOS || isTouchMac || isDesktopSafari;
+}
+
+// Above this size, the internal WASM viewer is likely to blow Safari's
+// memory limit and crash the page. Quick Look handles these fine.
+const SAFARI_INTERNAL_VIEWER_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+
 async function handlePdfFile(fileData, fileName) {
     const openMode = docmanSettings.pdfOpen || 'external';
+
+    // Safari memory guard: big PDFs go to the system viewer even when the
+    // internal viewer is enabled, because the internal one would crash the tab.
+    if (openMode === 'docman' && isAppleWebKit() && fileData.size > SAFARI_INTERNAL_VIEWER_MAX_BYTES) {
+        showToast('Large PDF — opening in system viewer to avoid Safari memory limits');
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
 
     // Samsung Internet blocks Web Share API with files on github.io (NotAllowedError).
     // Force built-in viewer on Samsung Internet regardless of the external setting.
@@ -1204,7 +1230,7 @@ function openPdfViewer(fileData, fileName) {
     document.addEventListener('keydown', escHandler);
     viewer._escHandler = escHandler;
 
-    renderPdfWithEmbedPdf(url, docId, fileName);
+    renderPdfWithEmbedPdf(fileData, docId, fileName);
 
 }
 
@@ -1217,33 +1243,65 @@ function openPdfViewer(fileData, fileName) {
 // that needs to be hand-rolled here anymore.
 // ============================================================
 
-// Self-hosted EmbedPDF (no CDN): the JS bundle AND the 4.6 MB pdfium.wasm
-// live in ./vendor/embedpdf/ and are pre-cached by the service worker, so
-// opening a PDF never waits on the network anymore.
+// Self-hosted EmbedPDF: JS bundle + 4.6 MB pdfium.wasm live in
+// ./vendor/embedpdf/ and are pre-cached by the service worker.
+// If the local copies are missing (e.g. incomplete deploy), we fall back
+// to the jsDelivr CDN transparently instead of breaking the viewer.
 const EMBEDPDF_LOCAL = new URL('vendor/embedpdf/embedpdf.js', window.location.href).href;
 const PDFIUM_WASM_LOCAL = new URL('vendor/embedpdf/pdfium.wasm', window.location.href).href;
-let embedPdfModulePromise = null;
+const EMBEDPDF_CDN = 'https://cdn.jsdelivr.net/npm/@embedpdf/snippet@2.14.4/dist/embedpdf.js';
+const PDFIUM_WASM_CDN = 'https://cdn.jsdelivr.net/npm/@embedpdf/pdfium@2.14.4/dist/pdfium.wasm';
 
-function loadEmbedPdfModule() {
-    if (!embedPdfModulePromise) {
-        embedPdfModulePromise = import(/* webpackIgnore: true */ EMBEDPDF_LOCAL);
+let pdfEnginePromise = null;
+
+// Resolves to { mod, wasmUrl } — local copies when available, CDN otherwise.
+function loadPdfEngine() {
+    if (!pdfEnginePromise) {
+        pdfEnginePromise = (async function() {
+            let mod, wasmUrl;
+            try {
+                mod = await import(/* webpackIgnore: true */ EMBEDPDF_LOCAL);
+                wasmUrl = PDFIUM_WASM_LOCAL;
+            } catch (localErr) {
+                console.warn('Local EmbedPDF missing/broken, falling back to CDN:', localErr);
+                mod = await import(/* webpackIgnore: true */ EMBEDPDF_CDN);
+                wasmUrl = PDFIUM_WASM_CDN;
+            }
+            // If the JS loaded locally but the wasm is missing (partial deploy),
+            // switch just the wasm to the CDN copy.
+            if (wasmUrl === PDFIUM_WASM_LOCAL) {
+                try {
+                    const head = await fetch(PDFIUM_WASM_LOCAL, { method: 'HEAD' });
+                    if (!head.ok) throw new Error('local wasm HTTP ' + head.status);
+                } catch (wasmErr) {
+                    console.warn('Local pdfium.wasm unavailable, using CDN wasm:', wasmErr);
+                    wasmUrl = PDFIUM_WASM_CDN;
+                }
+            }
+            return { mod: mod, wasmUrl: wasmUrl };
+        })();
+        // Allow a retry on the next open if everything failed.
+        pdfEnginePromise.catch(function() { pdfEnginePromise = null; });
     }
-    return embedPdfModulePromise;
+    return pdfEnginePromise;
 }
 
 // Warm up the engine in the background shortly after app start, so the very
 // first PDF open doesn't pay the module-load + WASM-compile cost.
 function preloadPdfEngine() {
-    try { loadEmbedPdfModule().catch(function(){ embedPdfModulePromise = null; }); } catch (e) {}
+    try { loadPdfEngine().catch(function(){}); } catch (e) {}
 }
 
-function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
+function renderPdfWithEmbedPdf(fileData, docId, fileName) {
     const container = document.getElementById('embedpdfContainer');
     const loadingMsg = document.getElementById('pdfLoadingMsg');
     const viewerEl = document.getElementById('pdfViewer');
     if (!container || !viewerEl) return;
 
-    loadEmbedPdfModule().then(function(mod) {
+    Promise.all([loadPdfEngine(), fileData.arrayBuffer()]).then(function(results) {
+        const engine = results[0];
+        const pdfBuffer = results[1];
+        const mod = engine.mod;
         // Bail out silently if the viewer was closed while the module was loading.
         if (!document.body.contains(viewerEl)) return;
 
@@ -1255,15 +1313,18 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
             target: container,
             theme: { preference: 'dark' },
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
-            // Local WASM instead of jsDelivr CDN — this was the main source
-            // of the multi-second lag on every PDF open.
-            wasmUrl: PDFIUM_WASM_LOCAL,
+            // Local WASM when available (main source of the old per-open
+            // multi-second lag); CDN fallback if the deploy is incomplete.
+            wasmUrl: engine.wasmUrl,
             // Don't fetch stamp manifests or fallback fonts from the CDN;
             // both can hang the loader on slow/absent networks.
             stamp: { manifests: [] },
             fontFallback: null,
             documentManager: {
-                initialDocuments: [{ url: pdfUrl, documentId: docId, name: fileName }]
+                // buffer (not a blob URL): Safari's worker context cannot
+                // fetch blob: URLs created on the main thread, which left the
+                // viewer stuck or crashing there.
+                initialDocuments: [{ buffer: pdfBuffer, documentId: docId, name: fileName }]
             }
         });
         viewerEl._embedPdfInstance = instance;
@@ -1299,7 +1360,9 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
         console.error('EmbedPDF failed to load', err);
         if (loadingMsg) {
             loadingMsg.style.pointerEvents = 'auto';
-            loadingMsg.textContent = 'Could not load the PDF engine. Check your internet connection and try again.';
+            loadingMsg.style.padding = '0 24px';
+            loadingMsg.style.textAlign = 'center';
+            loadingMsg.textContent = 'Could not load the PDF engine: ' + (err && err.message ? err.message : err);
         }
     });
 }
