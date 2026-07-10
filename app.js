@@ -990,8 +990,34 @@ function closeImageViewer() {
 let isSharing = false;
 let shareTimeout = null;
 
+// iOS / iPadOS / macOS Safari — WebKit gives a page a hard memory ceiling.
+// The WASM PDF engine + a large document can exceed it, at which point
+// WebKit kills the page (white screen -> reload). Detect it so we can
+// route big files to the native Quick Look viewer instead.
+function isAppleWebKit() {
+    const ua = navigator.userAgent;
+    // Every browser on iOS/iPadOS is WebKit under the hood, brand aside.
+    const isIOS = /iPhone|iPad|iPod/.test(ua);
+    const isTouchMac = ua.includes('Macintosh') && navigator.maxTouchPoints > 1; // iPadOS pretending to be a Mac
+    // Desktop Safari: WebKit UA without the Chrome/Chromium/Edge/Firefox markers.
+    const isDesktopSafari = ua.includes('Macintosh') && ua.includes('Safari') && !/Chrome|Chromium|Edg|Firefox/.test(ua);
+    return isIOS || isTouchMac || isDesktopSafari;
+}
+
+// Above this size, the internal WASM viewer is likely to blow Safari's
+// memory limit and crash the page. Quick Look handles these fine.
+const SAFARI_INTERNAL_VIEWER_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+
 async function handlePdfFile(fileData, fileName) {
     const openMode = docmanSettings.pdfOpen || 'external';
+
+    // Safari memory guard: big PDFs go to the system viewer even when the
+    // internal viewer is enabled, because the internal one would crash the tab.
+    if (openMode === 'docman' && isAppleWebKit() && fileData.size > SAFARI_INTERNAL_VIEWER_MAX_BYTES) {
+        showToast('Large PDF — opening in system viewer to avoid Safari memory limits');
+        await sharePdfExternally(fileData, fileName);
+        return;
+    }
 
     // Samsung Internet blocks Web Share API with files on github.io (NotAllowedError).
     // Force built-in viewer on Samsung Internet regardless of the external setting.
@@ -1204,7 +1230,7 @@ function openPdfViewer(fileData, fileName) {
     document.addEventListener('keydown', escHandler);
     viewer._escHandler = escHandler;
 
-    renderPdfWithEmbedPdf(url, docId, fileName);
+    renderPdfWithEmbedPdf(fileData, docId, fileName);
 
 }
 
@@ -1266,13 +1292,15 @@ function preloadPdfEngine() {
     try { loadPdfEngine().catch(function(){}); } catch (e) {}
 }
 
-function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
+function renderPdfWithEmbedPdf(fileData, docId, fileName) {
     const container = document.getElementById('embedpdfContainer');
     const loadingMsg = document.getElementById('pdfLoadingMsg');
     const viewerEl = document.getElementById('pdfViewer');
     if (!container || !viewerEl) return;
 
-    loadPdfEngine().then(function(engine) {
+    Promise.all([loadPdfEngine(), fileData.arrayBuffer()]).then(function(results) {
+        const engine = results[0];
+        const pdfBuffer = results[1];
         const mod = engine.mod;
         // Bail out silently if the viewer was closed while the module was loading.
         if (!document.body.contains(viewerEl)) return;
@@ -1293,7 +1321,10 @@ function renderPdfWithEmbedPdf(pdfUrl, docId, fileName) {
             stamp: { manifests: [] },
             fontFallback: null,
             documentManager: {
-                initialDocuments: [{ url: pdfUrl, documentId: docId, name: fileName }]
+                // buffer (not a blob URL): Safari's worker context cannot
+                // fetch blob: URLs created on the main thread, which left the
+                // viewer stuck or crashing there.
+                initialDocuments: [{ buffer: pdfBuffer, documentId: docId, name: fileName }]
             }
         });
         viewerEl._embedPdfInstance = instance;
