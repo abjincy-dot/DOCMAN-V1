@@ -1,5 +1,5 @@
 const APP_VERSION = '1.0.8';
-const CACHE = 'docman-v145';
+const CACHE = 'docman-v146';
 // Small, critical-path files: install fails if any of these can't be cached
 // (they're tiny, so a failure here means something is actually wrong).
 const CORE_ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.json', './Images/settings-tray.png', './Images/settings-neon.png', './vendor/jszip/jszip.min.js'];
@@ -68,6 +68,13 @@ self.addEventListener('fetch', e => {
     fetch(e.request).then(res => {
       if (res.ok) { const c = res.clone(); caches.open(CACHE).then(ca => ca.put(e.request, c)); }
       return res;
-    }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
+    }).catch(() => caches.match(e.request).then(r => {
+      if (r) return r;
+      // Only page navigations should fall back to the app shell. Serving
+      // index.html for a failed script/wasm request makes the browser try
+      // to parse HTML as JS — "Importing a module script failed".
+      if (e.request.mode === 'navigate') return caches.match('./index.html');
+      return Response.error();
+    }))
   );
 });
