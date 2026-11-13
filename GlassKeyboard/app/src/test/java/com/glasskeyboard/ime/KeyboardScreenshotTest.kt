@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.glasskeyboard.data.SymbolSlots
 import org.junit.Rule
@@ -39,6 +42,10 @@ class KeyboardScreenshotTest {
 
     private fun snap(name: String, state: KeyboardState) {
         compose.setContent { KeyboardScreen(state, SymbolSlots.DEFAULT, noOp) }
+        save(name)
+    }
+
+    private fun save(name: String) {
         compose.waitForIdle()
         // Draw the view directly; captureToImage() can time out under Robolectric.
         val view = compose.activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
@@ -51,4 +58,13 @@ class KeyboardScreenshotTest {
     @Test fun letters() = snap("keyboard_letters", KeyboardState())
 
     @Test fun symbols() = snap("keyboard_symbols", KeyboardState().apply { page = Page.SYMBOLS })
+
+    @Test fun allThemes() {
+        var theme by mutableStateOf(Themes.all.first())
+        compose.setContent { KeyboardScreen(KeyboardState(), SymbolSlots.DEFAULT, noOp, theme) }
+        Themes.all.forEach {
+            theme = it
+            save("theme_${it.id}")
+        }
+    }
 }

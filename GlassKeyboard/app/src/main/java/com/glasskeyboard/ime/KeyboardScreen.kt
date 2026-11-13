@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.KeyboardHide
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -66,56 +67,31 @@ import com.glasskeyboard.data.SymbolSlots
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
-/** Colours for the glass look. Tweak these to re-theme the keyboard. */
-object Glass {
-    val outer = Color(0xFF0E0B1F)
-    val base = Color(0xFF241B4A)
-    val orange = Color(0xFFE8613C)
-    val blue = Color(0xFF2C7FD8)
-    val purple = Color(0xFF8A3FD1)
-    val key = Color.White.copy(alpha = 0.10f)
-    val modKey = Color.White.copy(alpha = 0.17f)
-    val pressed = Color.White.copy(alpha = 0.32f)
-    val border = Color.White.copy(alpha = 0.16f)
-    val text = Color.White
-    val hint = Color.White.copy(alpha = 0.65f)
-    val accent = Color(0xFF5B4FD6)
-    val accentIcon = Color(0xFF8E83FF)
-    val popup = Color(0xFF2E2650)
-}
-
 private val KeyShape = RoundedCornerShape(12.dp)
 private val RowHeight = 54.dp
 private val PopupCell = 42.dp
 
-/** Soft orange / blue / purple glow behind the keys, like the reference design. */
-private fun Modifier.glassBackground() = drawBehind {
-    drawRect(Glass.base)
-    drawRect(
-        Brush.radialGradient(
-            listOf(Glass.orange.copy(alpha = 0.85f), Color.Transparent),
-            center = Offset(size.width * 0.78f, size.height * 0.15f),
-            radius = size.width * 0.55f,
+/** Base colour plus the theme's soft coloured glows behind the keys. */
+private fun Modifier.glassBackground(theme: KeyboardTheme) = drawBehind {
+    drawRect(theme.base)
+    theme.glows.forEach { g ->
+        drawRect(
+            Brush.radialGradient(
+                listOf(g.color.copy(alpha = g.alpha), Color.Transparent),
+                center = Offset(size.width * g.x, size.height * g.y),
+                radius = size.width * g.radius,
+            )
         )
-    )
-    drawRect(
-        Brush.radialGradient(
-            listOf(Glass.blue.copy(alpha = 0.8f), Color.Transparent),
-            center = Offset(size.width * 0.1f, size.height * 0.8f),
-            radius = size.width * 0.45f,
-        )
-    )
-    drawRect(
-        Brush.radialGradient(
-            listOf(Glass.purple.copy(alpha = 0.6f), Color.Transparent),
-            center = Offset(size.width * 0.55f, size.height),
-            radius = size.width * 0.5f,
-        )
-    )
+    }
 }
 
 @Composable
-fun KeyboardScreen(state: KeyboardState, slots: SymbolSlots, actions: KeyboardActions) {
+fun KeyboardScreen(
+    state: KeyboardState,
+    slots: SymbolSlots,
+    actions: KeyboardActions,
+    theme: KeyboardTheme = Themes.Aurora,
+) = CompositionLocalProvider(LocalKeyboardTheme provides theme) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -127,7 +103,7 @@ fun KeyboardScreen(state: KeyboardState, slots: SymbolSlots, actions: KeyboardAc
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(22.dp))
-                .glassBackground()
+                .glassBackground(theme)
                 .border(1.dp, Glass.border, RoundedCornerShape(22.dp))
                 .padding(horizontal = 3.dp, vertical = 4.dp)
         ) {
@@ -426,7 +402,7 @@ private fun CharKey(
                             .background(if (i == selected) Glass.accent else Color.Transparent),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(ch, color = Glass.text, fontSize = 22.sp)
+                        Text(ch, color = if (i == selected) Glass.onAccent else Glass.text, fontSize = 22.sp)
                     }
                 }
             }
@@ -491,7 +467,7 @@ private fun BottomRow(state: KeyboardState, slots: SymbolSlots, actions: Keyboar
         s.getOrNull(3)?.let { CharTap(it, actions) }
         CharTap(".", actions)
         TapKey(Modifier.weight(1.6f), background = Glass.accent, onTap = actions::onEnter) {
-            Icon(Icons.AutoMirrored.Outlined.KeyboardReturn, "Enter", tint = Glass.text)
+            Icon(Icons.AutoMirrored.Outlined.KeyboardReturn, "Enter", tint = Glass.onAccent)
         }
     }
 }
