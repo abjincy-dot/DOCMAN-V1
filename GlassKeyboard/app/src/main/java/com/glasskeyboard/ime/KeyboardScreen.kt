@@ -72,7 +72,7 @@ private val RowHeight = 54.dp
 private val PopupCell = 42.dp
 
 /** Base colour plus the theme's soft coloured glows behind the keys. */
-private fun Modifier.glassBackground(theme: KeyboardTheme) = drawBehind {
+internal fun Modifier.glassBackground(theme: KeyboardTheme) = drawBehind {
     drawRect(theme.base)
     theme.glows.forEach { g ->
         drawRect(

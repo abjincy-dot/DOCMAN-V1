@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -58,6 +61,17 @@ class KeyboardScreenshotTest {
     @Test fun letters() = snap("keyboard_letters", KeyboardState())
 
     @Test fun symbols() = snap("keyboard_symbols", KeyboardState().apply { page = Page.SYMBOLS })
+
+    @Test fun themePicker() {
+        compose.setContent {
+            androidx.compose.foundation.layout.Box(
+                androidx.compose.ui.Modifier
+                    .background(Themes.Aurora.outer)
+                    .padding(20.dp)
+            ) { com.glasskeyboard.ui.ThemePicker(Themes.Ocean) {} }
+        }
+        save("settings_theme_picker")
+    }
 
     @Test fun allThemes() {
         var theme by mutableStateOf(Themes.all.first())

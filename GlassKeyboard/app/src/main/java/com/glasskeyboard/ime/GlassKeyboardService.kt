@@ -24,6 +24,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.glasskeyboard.data.SymbolKeysStore
 import com.glasskeyboard.data.SymbolSlots
+import com.glasskeyboard.data.ThemeStore
 import com.glasskeyboard.ui.SettingsActivity
 
 /**
@@ -43,6 +44,7 @@ class GlassKeyboardService : InputMethodService(),
 
     private val state = KeyboardState()
     private lateinit var symbolKeys: SymbolKeysStore
+    private lateinit var themeStore: ThemeStore
     private var lastShiftTap = 0L
 
     override fun onCreate() {
@@ -50,6 +52,7 @@ class GlassKeyboardService : InputMethodService(),
         savedStateController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         symbolKeys = SymbolKeysStore(this)
+        themeStore = ThemeStore(this)
     }
 
     override fun onCreateInputView(): View {
@@ -58,7 +61,13 @@ class GlassKeyboardService : InputMethodService(),
             attachOwners(this)
             setContent {
                 val slots by symbolKeys.slots.collectAsState(initial = SymbolSlots.DEFAULT)
-                KeyboardScreen(state = state, slots = slots, actions = this@GlassKeyboardService)
+                val themeId by themeStore.themeId.collectAsState(initial = null)
+                KeyboardScreen(
+                    state = state,
+                    slots = slots,
+                    actions = this@GlassKeyboardService,
+                    theme = Themes.byId(themeId),
+                )
             }
         }
     }

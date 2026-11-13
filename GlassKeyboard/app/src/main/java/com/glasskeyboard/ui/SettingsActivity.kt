@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -55,6 +56,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glasskeyboard.data.SymbolKeysStore
 import com.glasskeyboard.data.SymbolSlots
+import com.glasskeyboard.data.ThemeStore
+import com.glasskeyboard.ime.KeyboardTheme
+import com.glasskeyboard.ime.Themes
+import com.glasskeyboard.ime.glassBackground
 import com.glasskeyboard.ime.Glass
 import kotlinx.coroutines.launch
 
@@ -67,12 +72,14 @@ class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val store = SymbolKeysStore(applicationContext)
+        val themeStore = ThemeStore(applicationContext)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Glass.accent, background = Glass.outer)) {
                 SettingsScreen(
                     enabled = enabled,
                     selected = selected,
                     store = store,
+                    themeStore = themeStore,
                     onEnable = { startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) },
                     onSelect = { getSystemService(InputMethodManager::class.java).showInputMethodPicker() },
                 )
@@ -104,10 +111,12 @@ private fun SettingsScreen(
     enabled: Boolean,
     selected: Boolean,
     store: SymbolKeysStore,
+    themeStore: ThemeStore,
     onEnable: () -> Unit,
     onSelect: () -> Unit,
 ) {
     val slots by store.slots.collectAsState(initial = SymbolSlots.DEFAULT)
+    val themeId by themeStore.themeId.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf<Int?>(null) }
     var testText by remember { mutableStateOf("") }
@@ -125,6 +134,11 @@ private fun SettingsScreen(
 
         StepCard(1, "Enable Glass Keyboard", "Turn it on in your phone's keyboard settings.", enabled, "Open settings", onEnable)
         StepCard(2, "Switch to Glass Keyboard", "Pick it as your current keyboard.", selected, "Choose keyboard", onSelect)
+
+        SectionHeader("◐", "THEMES")
+        ThemePicker(selected = Themes.byId(themeId)) { theme ->
+            scope.launch { themeStore.setTheme(theme.id) }
+        }
 
         SectionHeader("@", "SYMBOL KEYS")
         Text(
@@ -304,5 +318,97 @@ private fun SymbolPicker(current: String?, onPick: (String?) -> Unit, onDismiss:
             if (current != null) TextButton(onClick = { onPick(null) }) { Text("Remove") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Two-column grid of theme cards. */
+@Composable
+internal fun ThemePicker(selected: KeyboardTheme, onSelect: (KeyboardTheme) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Themes.all.chunked(2).forEach { pair ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                pair.forEach { theme ->
+                    ThemeCard(theme, theme.id == selected.id, Modifier.weight(1f)) { onSelect(theme) }
+                }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** A miniature keyboard drawn in the theme's colours, with its name underneath. */
+@Composable
+private fun ThemeCard(theme: KeyboardTheme, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.05f))
+            .border(if (selected) 2.5.dp else 1.dp, if (selected) theme.accent else Glass.border, shape)
+            .clickable(onClick = onClick)
+            .padding(8.dp),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .height(104.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .glassBackground(theme)
+                .padding(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            MiniRow {
+                repeat(10) { MiniKey(theme, theme.key, Modifier.weight(1f)) }
+            }
+            MiniRow {
+                Spacer(Modifier.weight(0.5f))
+                repeat(9) { MiniKey(theme, theme.key, Modifier.weight(1f)) }
+                Spacer(Modifier.weight(0.5f))
+            }
+            MiniRow {
+                MiniKey(theme, theme.modKey, Modifier.weight(1.5f))
+                repeat(7) { MiniKey(theme, theme.key, Modifier.weight(1f)) }
+                MiniKey(theme, theme.modKey, Modifier.weight(1.5f))
+            }
+            MiniRow {
+                MiniKey(theme, theme.modKey, Modifier.weight(1.4f))
+                MiniKey(theme, theme.key, Modifier.weight(5f))
+                MiniKey(theme, theme.accent, Modifier.weight(1.6f))
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                theme.name,
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier.weight(1f),
+            )
+            if (selected) {
+                Box(
+                    Modifier.size(20.dp).clip(CircleShape).background(theme.accent),
+                    contentAlignment = Alignment.Center,
+                ) { Text("✓", color = theme.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.MiniRow(content: @Composable RowScope.() -> Unit) {
+    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp), content = content)
+}
+
+@Composable
+private fun MiniKey(theme: KeyboardTheme, color: Color, modifier: Modifier) {
+    Box(
+        modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(4.dp))
+            .background(color)
+            .border(0.5.dp, theme.border, RoundedCornerShape(4.dp)),
     )
 }
