@@ -1,5 +1,6 @@
 package com.glasskeyboard.ime
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,7 +32,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Backspace
 import androidx.compose.material.icons.automirrored.outlined.KeyboardReturn
 import androidx.compose.material.icons.outlined.EmojiEmotions
-import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.KeyboardHide
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -152,7 +152,7 @@ private fun TopBar(state: KeyboardState, actions: KeyboardActions) {
             .height(46.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BarIcon(Icons.Outlined.GridView, "Settings", actions::onOpenSettings)
+        DotsMenuButton(actions::onOpenSettings)
         Row(Modifier.weight(1f).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
             val words = state.suggestions
             if (state.suggestionsEnabled) {
@@ -174,6 +174,30 @@ private fun TopBar(state: KeyboardState, actions: KeyboardActions) {
             }
         }
         BarIcon(Icons.Outlined.KeyboardHide, "Hide keyboard", actions::onHide)
+    }
+}
+
+/** Menu button drawn as a small grid of dots (3 rows x 6 columns). Opens settings. */
+@Composable
+private fun DotsMenuButton(onClick: () -> Unit) {
+    val color = Glass.accentIcon
+    Box(
+        Modifier
+            .size(width = 56.dp, height = 46.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClickLabel = "Settings", onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(width = 34.dp, height = 16.dp)) {
+            val cols = 6
+            val rows = 3
+            val r = 1.5.dp.toPx()
+            val dx = (size.width - 2 * r) / (cols - 1)
+            val dy = (size.height - 2 * r) / (rows - 1)
+            for (row in 0 until rows) for (col in 0 until cols) {
+                drawCircle(color, radius = r, center = Offset(r + col * dx, r + row * dy))
+            }
+        }
     }
 }
 
