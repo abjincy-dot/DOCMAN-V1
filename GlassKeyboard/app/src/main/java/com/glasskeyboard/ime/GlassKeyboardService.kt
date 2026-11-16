@@ -16,12 +16,17 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.glasskeyboard.data.RecentEmojiStore
 import com.glasskeyboard.data.SymbolKeysStore
 import com.glasskeyboard.data.SymbolSlots
 import com.glasskeyboard.data.ThemeStore
@@ -45,6 +50,7 @@ class GlassKeyboardService : InputMethodService(),
     private val state = KeyboardState()
     private lateinit var symbolKeys: SymbolKeysStore
     private lateinit var themeStore: ThemeStore
+    private lateinit var recentEmoji: RecentEmojiStore
     private var lastShiftTap = 0L
 
     override fun onCreate() {
@@ -53,6 +59,13 @@ class GlassKeyboardService : InputMethodService(),
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         symbolKeys = SymbolKeysStore(this)
         themeStore = ThemeStore(this)
+        recentEmoji = RecentEmojiStore(this)
+        lifecycleScope.launch {
+            state.emojiGroups = withContext(Dispatchers.Default) { EmojiData.load(this@GlassKeyboardService) }
+        }
+        lifecycleScope.launch {
+            recentEmoji.recent.collect { state.recentEmoji = it }
+        }
     }
 
     override fun onCreateInputView(): View {
@@ -62,11 +75,13 @@ class GlassKeyboardService : InputMethodService(),
             setContent {
                 val slots by symbolKeys.slots.collectAsState(initial = SymbolSlots.DEFAULT)
                 val themeId by themeStore.themeId.collectAsState(initial = null)
+                val styleId by themeStore.keyStyle.collectAsState(initial = null)
                 KeyboardScreen(
                     state = state,
                     slots = slots,
                     actions = this@GlassKeyboardService,
                     theme = Themes.byId(themeId),
+                    style = KeyStyle.byId(styleId),
                 )
             }
         }
@@ -126,6 +141,11 @@ class GlassKeyboardService : InputMethodService(),
         val out = if (state.shift != ShiftState.OFF && text.length == 1 && text[0].isLetter()) text.uppercase() else text
         ic.commitText(out, 1)
         if (state.shift == ShiftState.ON) state.shift = ShiftState.OFF
+    }
+
+    override fun onEmoji(emoji: String) {
+        currentInputConnection?.commitText(emoji, 1)
+        lifecycleScope.launch { recentEmoji.add(emoji) }
     }
 
     override fun onBackspace() {

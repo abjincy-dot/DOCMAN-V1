@@ -32,6 +32,7 @@ class KeyboardScreenshotTest {
 
     private val noOp = object : KeyboardActions {
         override fun onText(text: String) {}
+        override fun onEmoji(emoji: String) {}
         override fun onBackspace() {}
         override fun onShift() {}
         override fun onSpace() {}
@@ -75,10 +76,24 @@ class KeyboardScreenshotTest {
 
     @Test fun allThemes() {
         var theme by mutableStateOf(Themes.all.first())
-        compose.setContent { KeyboardScreen(KeyboardState(), SymbolSlots.DEFAULT, noOp, theme) }
-        Themes.all.forEach {
-            theme = it
-            save("theme_${it.id}")
+        var style by mutableStateOf(KeyStyle.PEBBLE)
+        compose.setContent { KeyboardScreen(KeyboardState(), SymbolSlots.DEFAULT, noOp, theme, style) }
+        KeyStyle.entries.forEach { s ->
+            style = s
+            Themes.all.forEach {
+                theme = it
+                save("theme_${it.id}_${s.id}")
+            }
         }
+    }
+
+    @Test fun emojiPanel() {
+        val state = KeyboardState().apply {
+            page = Page.EMOJI
+            emojiGroups = EmojiData.parse(File("src/main/assets/emoji.txt").readText())
+            recentEmoji = listOf("😂", "❤️", "👍", "🙏", "😍", "🔥", "🥹", "😊")
+        }
+        compose.setContent { KeyboardScreen(state, SymbolSlots.DEFAULT, noOp, Themes.Navy, KeyStyle.PEBBLE) }
+        save("emoji_panel")
     }
 }

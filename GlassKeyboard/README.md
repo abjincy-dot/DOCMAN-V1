@@ -4,13 +4,17 @@ An Android keyboard (input method) with a frosted-glass look, built with Kotlin 
 
 ![Preview](docs/preview.png)
 
+![Themes](docs/themes.png)
+
 ## Features
 - English (UK) QWERTY layout with a number row
-- Glass keys over an orange / blue / purple gradient
+- Two key styles: raised rounded **3D** keys or flat **Glass** keys
+- 11 colour themes, chosen in the app (Navy, Crayon, Onyx, Aurora, Ocean, Sunset, Forest, Neon, Midnight, Sakura, Frost)
+- Full emoji keyboard: every standard emoji in 8 categories, plus recently used
 - Suggestion bar with simple English word completion
 - Long-press space to switch keyboards; double-space types ". "
 - Customisable symbol keys beside the space bar (default `@` and `$`), edited in the app
-- Symbols page (`123`) and emoji page
+- Symbols page (`123`)
 - No internet permission; suggestions are turned off in password fields
 
 ## Open and run
@@ -23,7 +27,9 @@ An Android keyboard (input method) with a frosted-glass look, built with Kotlin 
 |---|---|
 | `ime/GlassKeyboardService.kt` | The keyboard service: typing, shift, enter, suggestions |
 | `ime/KeyboardScreen.kt` | The glass keyboard UI (colours in the `Glass` object) |
-| `ime/Layouts.kt` | Key layouts: letters, symbols, emoji |
+| `ime/Layouts.kt` | Key layouts: letters and symbols |
+| `ime/Themes.kt` | Colour themes and key styles |
+| `ime/EmojiData.kt` | Loads `assets/emoji.txt` (from unicode-emoji-json, MIT) |
 | `ime/Suggestions.kt` | Starter word list for the suggestion bar |
 | `data/SymbolKeysStore.kt` | Saves the symbol key slots |
 | `ui/SettingsActivity.kt` | Setup steps, symbol key editor, test field |

@@ -13,11 +13,14 @@ class KeyboardState {
     var suggestions by mutableStateOf(Suggestions.defaults)
     var suggestionsEnabled by mutableStateOf(true)
     var languageLabel by mutableStateOf("space")
+    var emojiGroups by mutableStateOf<List<EmojiGroup>>(emptyList())
+    var recentEmoji by mutableStateOf<List<String>>(emptyList())
 }
 
 /** Everything a key press can ask the service to do. */
 interface KeyboardActions {
     fun onText(text: String)
+    fun onEmoji(emoji: String)
     fun onBackspace()
     fun onShift()
     fun onSpace()

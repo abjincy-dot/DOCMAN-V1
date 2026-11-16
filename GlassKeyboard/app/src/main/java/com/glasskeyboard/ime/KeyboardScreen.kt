@@ -63,6 +63,17 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.lerp
+import kotlinx.coroutines.launch
 import com.glasskeyboard.data.SymbolSlots
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -70,6 +81,19 @@ import kotlin.math.roundToInt
 private val KeyShape = RoundedCornerShape(12.dp)
 private val RowHeight = 54.dp
 private val PopupCell = 42.dp
+private val PebbleShape = RoundedCornerShape(percent = 40)
+
+/** Which colour set a key uses (see [KeyboardTheme]). */
+private enum class KeyRole { LETTER, MOD, FUNC, SPACE, ENTER }
+
+private val LocalKeyStyle = staticCompositionLocalOf { KeyStyle.DEFAULT }
+
+/** Text / icon colour for the key currently being drawn. */
+private val LocalKeyText = compositionLocalOf { Color.White }
+private val KeyText: Color @Composable get() = LocalKeyText.current
+
+private fun Color.darken(f: Float) = lerp(this, Color.Black, f)
+private fun Color.lighten(f: Float) = lerp(this, Color.White, f)
 
 /** Base colour plus the theme's soft coloured glows behind the keys. */
 internal fun Modifier.glassBackground(theme: KeyboardTheme) = drawBehind {
@@ -91,7 +115,8 @@ fun KeyboardScreen(
     slots: SymbolSlots,
     actions: KeyboardActions,
     theme: KeyboardTheme = Themes.Aurora,
-) = CompositionLocalProvider(LocalKeyboardTheme provides theme) {
+    style: KeyStyle = KeyStyle.DEFAULT,
+) = CompositionLocalProvider(LocalKeyboardTheme provides theme, LocalKeyStyle provides style) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -111,7 +136,7 @@ fun KeyboardScreen(
             when (state.page) {
                 Page.LETTERS -> KeyRows(Layouts.englishLetters, state, actions)
                 Page.SYMBOLS -> KeyRows(Layouts.symbols, state, actions)
-                Page.EMOJI -> EmojiGrid(actions)
+                Page.EMOJI -> EmojiPanel(state, actions)
             }
             BottomRow(state, slots, actions)
         }
@@ -131,7 +156,7 @@ private fun TopBar(state: KeyboardState, actions: KeyboardActions) {
             val words = state.suggestions
             if (state.suggestionsEnabled) {
                 for (i in 0 until 3) {
-                    if (i > 0) Box(Modifier.width(1.dp).height(24.dp).background(Glass.hint.copy(alpha = 0.4f)))
+                    if (i > 0) Box(Modifier.width(1.dp).height(24.dp).background(Glass.barText.copy(alpha = 0.3f)))
                     val word = words.getOrNull(i)
                     Box(
                         Modifier
@@ -141,7 +166,7 @@ private fun TopBar(state: KeyboardState, actions: KeyboardActions) {
                         contentAlignment = Alignment.Center,
                     ) {
                         if (word != null) {
-                            Text(word, color = Glass.text, fontSize = 18.sp, maxLines = 1)
+                            Text(word, color = Glass.barText, fontSize = 18.sp, maxLines = 1)
                         }
                     }
                 }
@@ -187,46 +212,104 @@ private fun RowScope.KeyView(key: Key, state: KeyboardState, actions: KeyboardAc
                 modifier = mod,
             )
         }
-        KeyType.SHIFT -> TapKey(mod, background = if (state.shift == ShiftState.OFF) Glass.modKey else Glass.pressed, onTap = actions::onShift) {
+        KeyType.SHIFT -> TapKey(mod, role = KeyRole.MOD, active = state.shift != ShiftState.OFF, onTap = actions::onShift) {
             Text(
                 if (state.shift == ShiftState.LOCKED) "⇪" else "⇧",
-                color = Glass.text,
+                color = KeyText,
                 fontSize = 24.sp,
                 fontWeight = if (state.shift == ShiftState.OFF) FontWeight.Normal else FontWeight.Bold,
             )
         }
         KeyType.BACKSPACE -> RepeatKey(mod, onRepeat = actions::onBackspace) {
-            Icon(Icons.AutoMirrored.Outlined.Backspace, "Delete", tint = Glass.text)
+            Icon(Icons.AutoMirrored.Outlined.Backspace, "Delete", tint = KeyText)
         }
         KeyType.SPACER -> Spacer(mod)
         else -> Spacer(mod)
     }
 }
 
-/** Shared glass key surface. */
+/** Draws one key in the current [KeyStyle], coloured by its [role]. [active] = shift is on. */
 @Composable
 private fun KeySurface(
     modifier: Modifier,
     pressed: Boolean,
-    background: Color = Glass.key,
+    role: KeyRole = KeyRole.LETTER,
+    active: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    Box(
-        modifier
-            .fillMaxHeight()
-            .padding(horizontal = 3.dp, vertical = 4.dp)
-            .clip(KeyShape)
-            .background(if (pressed) Glass.pressed else background)
-            .border(1.dp, Glass.border, KeyShape),
-        contentAlignment = Alignment.Center,
-    ) { content() }
+    val t = Glass
+    val (face, text) = when (role) {
+        KeyRole.LETTER -> t.letter to t.letterText
+        KeyRole.MOD -> t.mod to t.modText
+        KeyRole.FUNC -> t.func to t.funcText
+        KeyRole.SPACE -> t.space to t.spaceText
+        KeyRole.ENTER -> t.enter to t.enterText
+    }
+    CompositionLocalProvider(LocalKeyText provides text) {
+        when (LocalKeyStyle.current) {
+            KeyStyle.GLASS -> Box(
+                modifier
+                    .fillMaxHeight()
+                    .padding(horizontal = 3.dp, vertical = 4.dp)
+                    .clip(KeyShape)
+                    .background(if (pressed || active) t.pressed.compositeOver(face) else face)
+                    .border(1.dp, t.border, KeyShape),
+                contentAlignment = Alignment.Center,
+            ) { content() }
+
+            KeyStyle.PEBBLE -> {
+                // Raised rounded key: a darker "lip" underneath, a gradient face and a soft gloss on top.
+                val solid = face.compositeOver(t.base)
+                val top = when {
+                    pressed -> solid.lighten(0.14f)
+                    active -> solid.lighten(0.22f)
+                    else -> solid
+                }
+                Box(
+                    modifier
+                        .fillMaxHeight()
+                        .padding(horizontal = 2.5.dp, vertical = 3.dp)
+                ) {
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .offset(y = 1.5.dp)
+                            .clip(PebbleShape)
+                            .background(Color.Black.copy(alpha = 0.22f))
+                    )
+                    Box(Modifier.matchParentSize().clip(PebbleShape).background(solid.darken(0.38f)))
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .padding(top = if (pressed) 3.dp else 0.dp, bottom = if (pressed) 1.dp else 4.dp)
+                            .clip(PebbleShape)
+                            .background(Brush.verticalGradient(listOf(top.lighten(0.10f), top, top.darken(0.06f))))
+                            .drawBehind {
+                                drawRoundRect(
+                                    brush = Brush.verticalGradient(
+                                        listOf(Color.White.copy(alpha = 0.26f), Color.White.copy(alpha = 0f)),
+                                        startY = 0f,
+                                        endY = size.height * 0.55f,
+                                    ),
+                                    topLeft = Offset(size.width * 0.08f, size.height * 0.04f),
+                                    size = Size(size.width * 0.84f, size.height * 0.5f),
+                                    cornerRadius = CornerRadius(size.height * 0.25f),
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) { content() }
+                }
+            }
+        }
+    }
 }
 
 /** Simple tap key with optional long-press. */
 @Composable
 private fun TapKey(
     modifier: Modifier,
-    background: Color = Glass.modKey,
+    role: KeyRole = KeyRole.FUNC,
+    active: Boolean = false,
     onLongPress: (() -> Unit)? = null,
     onTap: () -> Unit,
     content: @Composable () -> Unit,
@@ -249,7 +332,8 @@ private fun TapKey(
             )
         },
         pressed = pressed,
-        background = background,
+        role = role,
+        active = active,
         content = content,
     )
 }
@@ -276,7 +360,7 @@ private fun RepeatKey(modifier: Modifier, onRepeat: () -> Unit, content: @Compos
             }
         },
         pressed = pressed,
-        background = Glass.modKey,
+        role = KeyRole.MOD,
         content = content,
     )
 }
@@ -370,8 +454,8 @@ private fun CharKey(
                 }
             }
     ) {
-        KeySurface(Modifier.fillMaxWidth(), pressed = pressed) {
-            Text(label, color = Glass.text, fontSize = 24.sp)
+        KeySurface(Modifier.fillMaxWidth(), pressed = pressed, role = KeyRole.LETTER) {
+            Text(label, color = KeyText, fontSize = 24.sp)
         }
         alternates.firstOrNull()?.let { hint ->
             Text(
@@ -410,23 +494,74 @@ private fun CharKey(
     }
 }
 
+/** Full emoji picker: one scrolling grid with a category bar (and delete key) underneath. */
 @Composable
-private fun EmojiGrid(actions: KeyboardActions) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(8),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(RowHeight * 3),
-    ) {
-        items(Layouts.emoji) { e ->
-            Box(
-                Modifier
-                    .height(RowHeight)
-                    .fillMaxSize()
-                    .clip(KeyShape)
-                    .clickable { actions.onText(e) },
-                contentAlignment = Alignment.Center,
-            ) { Text(e, fontSize = 26.sp) }
+private fun EmojiPanel(state: KeyboardState, actions: KeyboardActions) {
+    val groups = remember(state.emojiGroups, state.recentEmoji) {
+        buildList {
+            if (state.recentEmoji.isNotEmpty()) {
+                add(EmojiGroup(EmojiData.RECENT, EmojiData.iconFor(EmojiData.RECENT), state.recentEmoji))
+            }
+            addAll(state.emojiGroups)
+        }
+    }
+    // Grid index where each group's header sits.
+    val starts = remember(groups) {
+        var i = 0
+        groups.map { g -> i.also { i += 1 + g.emojis.size } }
+    }
+    val grid = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+    val current by remember(starts) {
+        derivedStateOf { starts.indexOfLast { it <= grid.firstVisibleItemIndex }.coerceAtLeast(0) }
+    }
+
+    Column(Modifier.fillMaxWidth().height(RowHeight * 4)) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(8),
+            state = grid,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+        ) {
+            groups.forEach { g ->
+                item(key = "header_${g.name}", span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        g.name,
+                        color = Glass.barText.copy(alpha = 0.7f),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
+                    )
+                }
+                items(g.emojis, key = { "${g.name}_$it" }) { e ->
+                    Box(
+                        Modifier
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { actions.onEmoji(e) },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(e, fontSize = 26.sp) }
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().height(44.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            groups.forEachIndexed { i, g ->
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(3.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (i == current) Glass.accent.copy(alpha = 0.35f) else Color.Transparent)
+                        .clickable { scope.launch { grid.scrollToItem(starts[i]) } },
+                    contentAlignment = Alignment.Center,
+                ) { Text(g.icon, fontSize = 18.sp) }
+            }
+            RepeatKey(Modifier.weight(1.4f), onRepeat = actions::onBackspace) {
+                Icon(Icons.AutoMirrored.Outlined.Backspace, "Delete", tint = KeyText)
+            }
         }
     }
 }
@@ -439,42 +574,42 @@ private fun BottomRow(state: KeyboardState, slots: SymbolSlots, actions: Keyboar
     Row(Modifier.fillMaxWidth().height(RowHeight)) {
         if (state.page == Page.LETTERS) {
             TapKey(Modifier.weight(1.2f), onTap = { actions.onPage(Page.SYMBOLS) }) {
-                Text("123", color = Glass.text, fontSize = 18.sp)
+                Text("123", color = KeyText, fontSize = 18.sp)
             }
         } else {
             TapKey(Modifier.weight(1.2f), onTap = { actions.onPage(Page.LETTERS) }) {
-                Text("ABC", color = Glass.text, fontSize = 18.sp)
+                Text("ABC", color = KeyText, fontSize = 18.sp)
             }
         }
         TapKey(
             Modifier.weight(1f),
             onTap = { actions.onPage(if (state.page == Page.EMOJI) Page.LETTERS else Page.EMOJI) },
         ) {
-            Icon(Icons.Outlined.EmojiEmotions, "Emoji", tint = Glass.text)
+            Icon(Icons.Outlined.EmojiEmotions, "Emoji", tint = KeyText)
         }
         CharTap(",", actions)
         s.getOrNull(0)?.let { CharTap(it, actions) }
         s.getOrNull(1)?.let { CharTap(it, actions) }
         TapKey(
             Modifier.weight(2.2f + 0.5f * emptySlots),
-            background = Glass.key,
+            role = KeyRole.SPACE,
             onLongPress = actions::onSpaceLongPress,
             onTap = actions::onSpace,
         ) {
-            Text(state.languageLabel, color = Glass.text, fontSize = 17.sp)
+            Text(state.languageLabel, color = KeyText, fontSize = 17.sp)
         }
         s.getOrNull(2)?.let { CharTap(it, actions) }
         s.getOrNull(3)?.let { CharTap(it, actions) }
         CharTap(".", actions)
-        TapKey(Modifier.weight(1.6f), background = Glass.accent, onTap = actions::onEnter) {
-            Icon(Icons.AutoMirrored.Outlined.KeyboardReturn, "Enter", tint = Glass.onAccent)
+        TapKey(Modifier.weight(1.6f), role = KeyRole.ENTER, onTap = actions::onEnter) {
+            Icon(Icons.AutoMirrored.Outlined.KeyboardReturn, "Enter", tint = KeyText)
         }
     }
 }
 
 @Composable
 private fun RowScope.CharTap(symbol: String, actions: KeyboardActions) {
-    TapKey(Modifier.weight(1f), background = Glass.key, onTap = { actions.onText(symbol) }) {
-        Text(symbol, color = Glass.text, fontSize = 20.sp)
+    TapKey(Modifier.weight(1f), role = KeyRole.LETTER, onTap = { actions.onText(symbol) }) {
+        Text(symbol, color = KeyText, fontSize = 20.sp)
     }
 }

@@ -48,7 +48,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import com.glasskeyboard.data.SymbolKeysStore
 import com.glasskeyboard.data.SymbolSlots
 import com.glasskeyboard.data.ThemeStore
+import com.glasskeyboard.ime.KeyStyle
 import com.glasskeyboard.ime.KeyboardTheme
 import com.glasskeyboard.ime.Themes
 import com.glasskeyboard.ime.glassBackground
@@ -117,6 +122,8 @@ private fun SettingsScreen(
 ) {
     val slots by store.slots.collectAsState(initial = SymbolSlots.DEFAULT)
     val themeId by themeStore.themeId.collectAsState(initial = null)
+    val styleId by themeStore.keyStyle.collectAsState(initial = null)
+    val style = KeyStyle.byId(styleId)
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf<Int?>(null) }
     var testText by remember { mutableStateOf("") }
@@ -135,8 +142,13 @@ private fun SettingsScreen(
         StepCard(1, "Enable Glass Keyboard", "Turn it on in your phone's keyboard settings.", enabled, "Open settings", onEnable)
         StepCard(2, "Switch to Glass Keyboard", "Pick it as your current keyboard.", selected, "Choose keyboard", onSelect)
 
+        SectionHeader("▢", "KEY STYLE")
+        KeyStylePicker(selected = style, theme = Themes.byId(themeId)) { picked ->
+            scope.launch { themeStore.setKeyStyle(picked.id) }
+        }
+
         SectionHeader("◐", "THEMES")
-        ThemePicker(selected = Themes.byId(themeId)) { theme ->
+        ThemePicker(selected = Themes.byId(themeId), style = style) { theme ->
             scope.launch { themeStore.setTheme(theme.id) }
         }
 
@@ -321,14 +333,80 @@ private fun SymbolPicker(current: String?, onPick: (String?) -> Unit, onDismiss:
     )
 }
 
+/** Highlight colour for a selected card: the theme accent, unless it is too dark to see here. */
+private fun KeyboardTheme.highlight() = if (accent.luminance() < 0.15f) Color.White else accent
+private fun KeyboardTheme.onHighlight() = if (accent.luminance() < 0.15f) Color.Black else onAccent
+
+/** Glass vs 3D, each shown as a few keys in the current theme. */
+@Composable
+private fun KeyStylePicker(selected: KeyStyle, theme: KeyboardTheme, onSelect: (KeyStyle) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        KeyStyle.entries.forEach { style ->
+            val isSelected = style == selected
+            val shape = RoundedCornerShape(18.dp)
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clip(shape)
+                    .background(Color.White.copy(alpha = 0.05f))
+                    .border(if (isSelected) 2.5.dp else 1.dp, if (isSelected) theme.highlight() else Glass.border, shape)
+                    .clickable { onSelect(style) }
+                    .padding(8.dp),
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .glassBackground(theme)
+                        .padding(horizontal = 6.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    MiniKey(theme, style, theme.letter, Modifier.weight(1f))
+                    MiniKey(theme, style, theme.letter, Modifier.weight(1f))
+                    MiniKey(theme, style, theme.mod, Modifier.weight(1f))
+                    MiniKey(theme, style, theme.enter, Modifier.weight(1.4f))
+                }
+                CardLabel(style.label, isSelected, theme)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardLabel(text: String, selected: Boolean, theme: KeyboardTheme) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text,
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.weight(1f),
+        )
+        if (selected) {
+            Box(
+                Modifier.size(20.dp).clip(CircleShape).background(theme.highlight()),
+                contentAlignment = Alignment.Center,
+            ) { Text("✓", color = theme.onHighlight(), fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+        }
+    }
+}
+
 /** Two-column grid of theme cards. */
 @Composable
-internal fun ThemePicker(selected: KeyboardTheme, onSelect: (KeyboardTheme) -> Unit) {
+internal fun ThemePicker(
+    selected: KeyboardTheme,
+    style: KeyStyle = KeyStyle.DEFAULT,
+    onSelect: (KeyboardTheme) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Themes.all.chunked(2).forEach { pair ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 pair.forEach { theme ->
-                    ThemeCard(theme, theme.id == selected.id, Modifier.weight(1f)) { onSelect(theme) }
+                    ThemeCard(theme, style, theme.id == selected.id, Modifier.weight(1f)) { onSelect(theme) }
                 }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
@@ -338,13 +416,19 @@ internal fun ThemePicker(selected: KeyboardTheme, onSelect: (KeyboardTheme) -> U
 
 /** A miniature keyboard drawn in the theme's colours, with its name underneath. */
 @Composable
-private fun ThemeCard(theme: KeyboardTheme, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun ThemeCard(
+    theme: KeyboardTheme,
+    style: KeyStyle,
+    selected: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
     val shape = RoundedCornerShape(18.dp)
     Column(
         modifier
             .clip(shape)
             .background(Color.White.copy(alpha = 0.05f))
-            .border(if (selected) 2.5.dp else 1.dp, if (selected) theme.accent else Glass.border, shape)
+            .border(if (selected) 2.5.dp else 1.dp, if (selected) theme.highlight() else Glass.border, shape)
             .clickable(onClick = onClick)
             .padding(8.dp),
     ) {
@@ -358,42 +442,25 @@ private fun ThemeCard(theme: KeyboardTheme, selected: Boolean, modifier: Modifie
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             MiniRow {
-                repeat(10) { MiniKey(theme, theme.key, Modifier.weight(1f)) }
+                repeat(10) { MiniKey(theme, style, theme.letter, Modifier.weight(1f)) }
             }
             MiniRow {
                 Spacer(Modifier.weight(0.5f))
-                repeat(9) { MiniKey(theme, theme.key, Modifier.weight(1f)) }
+                repeat(9) { MiniKey(theme, style, theme.letter, Modifier.weight(1f)) }
                 Spacer(Modifier.weight(0.5f))
             }
             MiniRow {
-                MiniKey(theme, theme.modKey, Modifier.weight(1.5f))
-                repeat(7) { MiniKey(theme, theme.key, Modifier.weight(1f)) }
-                MiniKey(theme, theme.modKey, Modifier.weight(1.5f))
+                MiniKey(theme, style, theme.mod, Modifier.weight(1.5f))
+                repeat(7) { MiniKey(theme, style, theme.letter, Modifier.weight(1f)) }
+                MiniKey(theme, style, theme.mod, Modifier.weight(1.5f))
             }
             MiniRow {
-                MiniKey(theme, theme.modKey, Modifier.weight(1.4f))
-                MiniKey(theme, theme.key, Modifier.weight(5f))
-                MiniKey(theme, theme.accent, Modifier.weight(1.6f))
+                MiniKey(theme, style, theme.func, Modifier.weight(1.4f))
+                MiniKey(theme, style, theme.space, Modifier.weight(5f))
+                MiniKey(theme, style, theme.enter, Modifier.weight(1.6f))
             }
         }
-        Row(
-            Modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                theme.name,
-                color = Color.White,
-                fontSize = 15.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier.weight(1f),
-            )
-            if (selected) {
-                Box(
-                    Modifier.size(20.dp).clip(CircleShape).background(theme.accent),
-                    contentAlignment = Alignment.Center,
-                ) { Text("✓", color = theme.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-            }
-        }
+        CardLabel(theme.name, selected, theme)
     }
 }
 
@@ -402,13 +469,29 @@ private fun ColumnScope.MiniRow(content: @Composable RowScope.() -> Unit) {
     Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp), content = content)
 }
 
+/** One tiny key: flat glass, or a rounded 3D key with a darker lip underneath. */
 @Composable
-private fun MiniKey(theme: KeyboardTheme, color: Color, modifier: Modifier) {
-    Box(
-        modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(4.dp))
-            .background(color)
-            .border(0.5.dp, theme.border, RoundedCornerShape(4.dp)),
-    )
+private fun MiniKey(theme: KeyboardTheme, style: KeyStyle, color: Color, modifier: Modifier) {
+    when (style) {
+        KeyStyle.GLASS -> Box(
+            modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(4.dp))
+                .background(color)
+                .border(0.5.dp, theme.border, RoundedCornerShape(4.dp)),
+        )
+        KeyStyle.PEBBLE -> {
+            val solid = color.compositeOver(theme.base)
+            val shape = RoundedCornerShape(percent = 40)
+            Box(
+                modifier
+                    .fillMaxSize()
+                    .clip(shape)
+                    .background(lerp(solid, Color.Black, 0.38f))
+                    .padding(bottom = 1.5.dp)
+                    .clip(shape)
+                    .background(Brush.verticalGradient(listOf(lerp(solid, Color.White, 0.18f), solid))),
+            )
+        }
+    }
 }

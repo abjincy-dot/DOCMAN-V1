@@ -8,6 +8,21 @@ import androidx.compose.ui.graphics.Color
 /** A soft coloured light behind the keys. Position and radius are fractions of the keyboard width/height. */
 data class Glow(val color: Color, val x: Float, val y: Float, val radius: Float, val alpha: Float)
 
+/** How keys are drawn: flat see-through glass, or raised rounded 3D keys. */
+enum class KeyStyle(val id: String, val label: String) {
+    GLASS("glass", "Glass"),
+    PEBBLE("3d", "3D");
+
+    companion object {
+        val DEFAULT = PEBBLE
+        fun byId(id: String?) = entries.firstOrNull { it.id == id } ?: DEFAULT
+    }
+}
+
+/**
+ * Colours for one keyboard theme. The per-key colours (letter, mod, func, space, enter) default to
+ * the shared glass colours, so simple themes only set the basics; multicolour themes override them.
+ */
 data class KeyboardTheme(
     val id: String,
     val name: String,
@@ -24,6 +39,21 @@ data class KeyboardTheme(
     val onAccent: Color,
     val accentIcon: Color,
     val popup: Color,
+    /** Letter, number and punctuation keys. */
+    val letter: Color = key,
+    /** Shift and backspace. */
+    val mod: Color = modKey,
+    /** 123 / ABC and emoji keys. */
+    val func: Color = modKey,
+    val space: Color = key,
+    val enter: Color = accent,
+    val letterText: Color = text,
+    val modText: Color = text,
+    val funcText: Color = text,
+    val spaceText: Color = text,
+    val enterText: Color = onAccent,
+    /** Suggestion words in the top bar (they sit on the background, not on a key). */
+    val barText: Color = text,
 )
 
 private fun darkGlass(
@@ -120,7 +150,49 @@ object Themes {
         ),
     )
 
-    val all = listOf(Aurora, Ocean, Sunset, Forest, Neon, Midnight, Sakura, Frost)
+    /** Deep navy keys with a gold Enter key. */
+    val Navy = KeyboardTheme(
+        id = "navy", name = "Navy",
+        outer = Color(0xFF0B0D16), base = Color(0xFF151C36),
+        glows = listOf(Glow(Color(0xFF2E4C9A), 0.5f, 0.0f, 0.7f, 0.35f)),
+        key = Color(0xFF2D3C70), modKey = Color(0xFF2D3C70),
+        pressed = Color.White.copy(alpha = 0.30f), border = Color.White.copy(alpha = 0.12f),
+        text = Color(0xFFDCE2F5), hint = Color.White.copy(alpha = 0.55f),
+        accent = Color(0xFFE9B949), onAccent = Color(0xFF3A2A05),
+        accentIcon = Color(0xFFB9C3E6), popup = Color(0xFF24305A),
+    )
+
+    /** Playful multicolour: blue letters, red shift / delete / space, orange 123 / emoji, yellow Enter. */
+    val Crayon = KeyboardTheme(
+        id = "crayon", name = "Crayon",
+        outer = Color(0xFF1B1B1F), base = Color(0xFF26262C),
+        glows = listOf(
+            Glow(Color(0xFFD7303D), 0.10f, 0.0f, 0.45f, 0.18f),
+            Glow(Color(0xFF3D6FD6), 0.90f, 1.0f, 0.50f, 0.20f),
+        ),
+        key = Color(0xFF3D6FD6), modKey = Color(0xFFD7303D),
+        pressed = Color.White.copy(alpha = 0.30f), border = Color.White.copy(alpha = 0.14f),
+        text = Color.White, hint = Color.White.copy(alpha = 0.6f),
+        accent = Color(0xFFF3C01C), onAccent = Color(0xFF4A2C00),
+        accentIcon = Color(0xFFF3C01C), popup = Color(0xFF2F3F7A),
+        func = Color(0xFFB4561F), funcText = Color(0xFFFBE3CF),
+        space = Color(0xFFD7303D), spaceText = Color(0xFFFFDDE0),
+    )
+
+    /** Glossy black keys on a soft lavender-grey background. */
+    val Onyx = KeyboardTheme(
+        id = "onyx", name = "Onyx",
+        outer = Color(0xFFF0EFF7), base = Color(0xFFE2E1F1),
+        glows = listOf(Glow(Color.White, 0.5f, 0.0f, 0.7f, 0.6f)),
+        key = Color(0xFF2C2C32), modKey = Color(0xFF2C2C32),
+        pressed = Color.White.copy(alpha = 0.25f), border = Color.Black.copy(alpha = 0.10f),
+        text = Color(0xFFF4F4F6), hint = Color.White.copy(alpha = 0.6f),
+        accent = Color(0xFF2C2C32), onAccent = Color.White,
+        accentIcon = Color(0xFF55555F), popup = Color(0xFF2C2C32),
+        barText = Color(0xFF2C2C32),
+    )
+
+    val all = listOf(Navy, Crayon, Onyx, Aurora, Ocean, Sunset, Forest, Neon, Midnight, Sakura, Frost)
 
     fun byId(id: String?) = all.firstOrNull { it.id == id } ?: Aurora
 }
