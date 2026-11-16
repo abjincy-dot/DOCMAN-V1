@@ -73,6 +73,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import kotlinx.coroutines.launch
 import com.glasskeyboard.data.SymbolSlots
 import kotlin.math.floor
@@ -257,7 +258,9 @@ private fun KeySurface(
                 contentAlignment = Alignment.Center,
             ) { content() }
 
-            KeyStyle.PEBBLE -> {
+            KeyStyle.PEBBLE -> if (t.smooth) {
+                SmoothKey(modifier, face.compositeOver(t.base), pressed, active, content)
+            } else {
                 // Raised rounded key: a darker "lip" underneath, a gradient face and a soft gloss on top.
                 val solid = face.compositeOver(t.base)
                 val top = when {
@@ -275,9 +278,11 @@ private fun KeySurface(
                             .matchParentSize()
                             .offset(y = 1.5.dp)
                             .clip(PebbleShape)
-                            .background(Color.Black.copy(alpha = 0.22f))
+                            .background(Color.Black.copy(alpha = if (solid.luminance() > 0.7f) 0.12f else 0.22f))
                     )
-                    Box(Modifier.matchParentSize().clip(PebbleShape).background(solid.darken(0.38f)))
+                    // Light keys get a softer edge so they don't look outlined.
+                    val lip = solid.darken(if (solid.luminance() > 0.7f) 0.16f else 0.38f)
+                    Box(Modifier.matchParentSize().clip(PebbleShape).background(lip))
                     Box(
                         Modifier
                             .matchParentSize()
@@ -301,6 +306,68 @@ private fun KeySurface(
                 }
             }
         }
+    }
+}
+
+private val SmoothShape = RoundedCornerShape(percent = 50)
+
+/**
+ * Smooth raised key (themes with `smooth = true`): a domed matte top sitting on a light grey base,
+ * with only a faint shadow. No shine band and no dark edge.
+ */
+@Composable
+private fun SmoothKey(
+    modifier: Modifier,
+    solid: Color,
+    pressed: Boolean,
+    active: Boolean,
+    content: @Composable () -> Unit,
+) {
+    val top = when {
+        pressed -> solid.darken(0.05f)
+        active -> lerp(solid, Color(0xFF5B8DEF), 0.18f)
+        else -> solid
+    }
+    // How far the top sits above its base; pressing pushes it down.
+    val lift = if (pressed) 1.5.dp else 4.5.dp
+    Box(
+        modifier
+            .fillMaxHeight()
+            .padding(horizontal = 1.5.dp, vertical = 2.5.dp)
+    ) {
+        // Faint soft shadow on the background.
+        Box(
+            Modifier
+                .matchParentSize()
+                .offset(y = 1.5.dp)
+                .clip(SmoothShape)
+                .background(Color.Black.copy(alpha = 0.06f))
+        )
+        // The key's side / base: light grey, slightly darker towards the bottom.
+        Box(
+            Modifier
+                .matchParentSize()
+                .clip(SmoothShape)
+                .background(Brush.verticalGradient(listOf(solid.darken(0.10f), solid.darken(0.20f))))
+        )
+        // The domed top: brightest a little above the centre, gently shaded towards the edges.
+        Box(
+            Modifier
+                .matchParentSize()
+                .padding(top = 4.5.dp - lift, bottom = lift)
+                .clip(SmoothShape)
+                .drawBehind {
+                    drawRect(
+                        Brush.radialGradient(
+                            listOf(top.lighten(0.35f), top, top.darken(0.07f)),
+                            center = Offset(size.width / 2, size.height * 0.38f),
+                            radius = maxOf(size.width, size.height) * 0.72f,
+                        )
+                    )
+                }
+                .border(0.6.dp, Color.Black.copy(alpha = 0.05f), SmoothShape),
+            contentAlignment = Alignment.Center,
+        ) { content() }
     }
 }
 

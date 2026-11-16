@@ -480,14 +480,23 @@ private fun MiniKey(theme: KeyboardTheme, style: KeyStyle, color: Color, modifie
                 .background(color)
                 .border(0.5.dp, theme.border, RoundedCornerShape(4.dp)),
         )
-        KeyStyle.PEBBLE -> {
+        KeyStyle.PEBBLE -> if (theme.smooth) {
+            Box(
+                modifier
+                    .fillMaxSize()
+                    .padding(bottom = 1.dp)
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(color.compositeOver(theme.base))
+                    .border(0.5.dp, Color.Black.copy(alpha = 0.10f), RoundedCornerShape(percent = 50)),
+            )
+        } else {
             val solid = color.compositeOver(theme.base)
             val shape = RoundedCornerShape(percent = 40)
             Box(
                 modifier
                     .fillMaxSize()
                     .clip(shape)
-                    .background(lerp(solid, Color.Black, 0.38f))
+                    .background(lerp(solid, Color.Black, if (solid.luminance() > 0.7f) 0.16f else 0.38f))
                     .padding(bottom = 1.5.dp)
                     .clip(shape)
                     .background(Brush.verticalGradient(listOf(lerp(solid, Color.White, 0.18f), solid))),

@@ -54,6 +54,8 @@ data class KeyboardTheme(
     val enterText: Color = onAccent,
     /** Suggestion words in the top bar (they sit on the background, not on a key). */
     val barText: Color = text,
+    /** 3D style only: round matte keys with a soft shadow instead of a hard edge and shine. */
+    val smooth: Boolean = false,
 )
 
 private fun darkGlass(
@@ -192,7 +194,22 @@ object Themes {
         barText = Color(0xFF2C2C32),
     )
 
-    val all = listOf(Navy, Crayon, Onyx, Aurora, Ocean, Sunset, Forest, Neon, Midnight, Sakura, Frost)
+    /** Off-white rounded keys with pale blue function keys on light grey (the "white keyboard"). */
+    val Pearl = KeyboardTheme(
+        id = "pearl", name = "Pearl",
+        outer = Color(0xFFE9EBF0), base = Color(0xFFD3D6DD),
+        glows = listOf(Glow(Color.White, 0.5f, 0.0f, 0.6f, 0.35f)),
+        key = Color(0xFFF6F5F1), modKey = Color(0xFFDCE7F8),
+        pressed = Color(0xFFBFD3F2), border = Color.Black.copy(alpha = 0.08f),
+        text = Color(0xFF2A2D33), hint = Color(0xFF2A2D33).copy(alpha = 0.5f),
+        accent = Color(0xFF5B8DEF), onAccent = Color.White,
+        accentIcon = Color(0xFF3A3F4A), popup = Color.White,
+        func = Color(0xFFDCE7F8), enter = Color(0xFFDCE7F8), enterText = Color(0xFF2A2D33),
+        barText = Color(0xFF2A2D33),
+        smooth = true,
+    )
+
+    val all = listOf(Pearl, Navy, Crayon, Onyx, Aurora, Ocean, Sunset, Forest, Neon, Midnight, Sakura, Frost)
 
     fun byId(id: String?) = all.firstOrNull { it.id == id } ?: Aurora
 }
