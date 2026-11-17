@@ -2,11 +2,7 @@ package com.glasskeyboard.ime
 
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
-import android.os.Build
 import android.os.SystemClock
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
@@ -61,12 +57,10 @@ class GlassKeyboardService : InputMethodService(),
     private lateinit var typing: TypingStore
     private var predictor: Predictor? = null
     private var vibrationOn = true
+    private var vibrationLevel = VibrationLevel.DEFAULT
     private var learningOn = true
     private val learnedFile by lazy { File(noBackupFilesDir, "learned_words.tsv") }
-    private val vibrator: Vibrator? by lazy {
-        if (Build.VERSION.SDK_INT >= 31) getSystemService(VibratorManager::class.java)?.defaultVibrator
-        else @Suppress("DEPRECATION") getSystemService(Vibrator::class.java)
-    }
+    private val vibrator by lazy { KeyVibrator(this) }
     private var lastShiftTap = 0L
 
     override fun onCreate() {
@@ -87,6 +81,7 @@ class GlassKeyboardService : InputMethodService(),
             refresh()
         }
         lifecycleScope.launch { typing.vibration.collect { vibrationOn = it } }
+        lifecycleScope.launch { typing.vibrationLevel.collect { vibrationLevel = VibrationLevel.byId(it) } }
         lifecycleScope.launch { typing.learning.collect { learningOn = it } }
         lifecycleScope.launch {
             // Skip the current value; react only when the user taps "Clear learned words".
@@ -206,15 +201,7 @@ class GlassKeyboardService : InputMethodService(),
     // ---- KeyboardActions ----
 
     override fun onKeyDown() {
-        if (!vibrationOn) return
-        val v = vibrator?.takeIf { it.hasVibrator() } ?: return
-        // A short, soft tick rather than a buzz.
-        val effect = if (Build.VERSION.SDK_INT >= 29) {
-            VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)
-        } else {
-            VibrationEffect.createOneShot(8, if (v.hasAmplitudeControl()) 50 else VibrationEffect.DEFAULT_AMPLITUDE)
-        }
-        v.vibrate(effect)
+        if (vibrationOn) vibrator.tick(vibrationLevel)
     }
 
     override fun onText(text: String) {

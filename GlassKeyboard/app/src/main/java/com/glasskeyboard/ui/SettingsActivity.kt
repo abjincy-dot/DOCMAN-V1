@@ -65,6 +65,8 @@ import com.glasskeyboard.data.SymbolSlots
 import com.glasskeyboard.data.ThemeStore
 import com.glasskeyboard.data.TypingStore
 import com.glasskeyboard.ime.KeyStyle
+import com.glasskeyboard.ime.KeyVibrator
+import com.glasskeyboard.ime.VibrationLevel
 import com.glasskeyboard.ime.KeyboardTheme
 import com.glasskeyboard.ime.Themes
 import com.glasskeyboard.ime.glassBackground
@@ -160,11 +162,19 @@ private fun SettingsScreen(
 
         SectionHeader("≋", "TYPING")
         val vibration by typingStore.vibration.collectAsState(initial = true)
+        val levelId by typingStore.vibrationLevel.collectAsState(initial = null)
         val learning by typingStore.learning.collectAsState(initial = true)
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val keyVibrator = remember { KeyVibrator(context) }
         TypingSettings(
             vibration = vibration,
+            level = VibrationLevel.byId(levelId),
             learning = learning,
             onVibration = { scope.launch { typingStore.setVibration(it) } },
+            onLevel = { picked ->
+                keyVibrator.tick(picked) // let the user feel the new strength
+                scope.launch { typingStore.setVibrationLevel(picked.id) }
+            },
             onLearning = { scope.launch { typingStore.setLearning(it) } },
             onClearLearned = { scope.launch { typingStore.clearLearned() } },
         )
@@ -525,8 +535,10 @@ private fun MiniKey(theme: KeyboardTheme, style: KeyStyle, color: Color, modifie
 @Composable
 internal fun TypingSettings(
     vibration: Boolean,
+    level: VibrationLevel,
     learning: Boolean,
     onVibration: (Boolean) -> Unit,
+    onLevel: (VibrationLevel) -> Unit,
     onLearning: (Boolean) -> Unit,
     onClearLearned: () -> Unit,
 ) {
@@ -540,6 +552,33 @@ internal fun TypingSettings(
             .padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
         SwitchRow("Smooth vibration", "A soft tick each time you press a key.", vibration, onVibration)
+        if (vibration) {
+            Text("Strength", color = Glass.hint, fontSize = 13.sp)
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                VibrationLevel.entries.forEach { l ->
+                    val selected = l == level
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (selected) Glass.accent else Color.White.copy(alpha = 0.08f))
+                            .clickable { onLevel(l) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            l.label,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                    }
+                }
+            }
+        }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Glass.border))
         SwitchRow(
             "Learn my words",
