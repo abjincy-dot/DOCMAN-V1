@@ -32,6 +32,7 @@ class KeyboardScreenshotTest {
 
     private val noOp = object : KeyboardActions {
         override fun onText(text: String) {}
+        override fun onKeyDown() {}
         override fun onEmoji(emoji: String) {}
         override fun onBackspace() {}
         override fun onShift() {}
@@ -85,6 +86,27 @@ class KeyboardScreenshotTest {
                 save("theme_${it.id}_${s.id}")
             }
         }
+    }
+
+    @Test fun typingPredictions() {
+        val state = KeyboardState().apply { suggestions = listOf("hel", "hello", "help") }
+        compose.setContent { KeyboardScreen(state, SymbolSlots.DEFAULT, noOp, Themes.Sunset, KeyStyle.PEBBLE) }
+        save("typing_predictions")
+    }
+
+    @Test fun nextWordPredictions() {
+        val state = KeyboardState().apply { suggestions = listOf("god", "you", "for") }
+        compose.setContent { KeyboardScreen(state, SymbolSlots.DEFAULT, noOp, Themes.Sunset, KeyStyle.PEBBLE) }
+        save("next_word_predictions")
+    }
+
+    @Test fun typingSettings() {
+        compose.setContent {
+            androidx.compose.foundation.layout.Box(
+                androidx.compose.ui.Modifier.background(Themes.Aurora.outer).padding(20.dp)
+            ) { com.glasskeyboard.ui.TypingSettings(true, true, {}, {}, {}) }
+        }
+        save("settings_typing")
     }
 
     @Test fun emojiPanel() {

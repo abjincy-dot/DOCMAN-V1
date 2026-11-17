@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.map
  */
 data class SymbolSlots(val slots: List<String?>) {
     companion object {
-        val DEFAULT = SymbolSlots(listOf("@", null, "$", null))
+        val DEFAULT = SymbolSlots(listOf(null, null, null, null))
         val CHOICES = listOf("@", "$", "€", "£", "#", "&", "?", "!", "-", "_", "/", ":", ";", "'")
     }
 }

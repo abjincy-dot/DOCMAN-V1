@@ -52,12 +52,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -89,6 +87,12 @@ private enum class KeyRole { LETTER, MOD, FUNC, SPACE, ENTER }
 
 private val LocalKeyStyle = staticCompositionLocalOf { KeyStyle.DEFAULT }
 
+/** Called on every key press (and long-press step) so the service can vibrate if enabled. */
+private val LocalKeyFeedback = staticCompositionLocalOf<() -> Unit> { {} }
+
+/** Background glows are drawn at this fraction of their theme strength, for a softer look. */
+private const val GlowSoftness = 0.6f
+
 /** Text / icon colour for the key currently being drawn. */
 private val LocalKeyText = compositionLocalOf { Color.White }
 private val KeyText: Color @Composable get() = LocalKeyText.current
@@ -102,7 +106,7 @@ internal fun Modifier.glassBackground(theme: KeyboardTheme) = drawBehind {
     theme.glows.forEach { g ->
         drawRect(
             Brush.radialGradient(
-                listOf(g.color.copy(alpha = g.alpha), Color.Transparent),
+                listOf(g.color.copy(alpha = g.alpha * GlowSoftness), Color.Transparent),
                 center = Offset(size.width * g.x, size.height * g.y),
                 radius = size.width * g.radius,
             )
@@ -117,7 +121,11 @@ fun KeyboardScreen(
     actions: KeyboardActions,
     theme: KeyboardTheme = Themes.Aurora,
     style: KeyStyle = KeyStyle.DEFAULT,
-) = CompositionLocalProvider(LocalKeyboardTheme provides theme, LocalKeyStyle provides style) {
+) = CompositionLocalProvider(
+    LocalKeyboardTheme provides theme,
+    LocalKeyStyle provides style,
+    LocalKeyFeedback provides actions::onKeyDown,
+) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -167,7 +175,13 @@ private fun TopBar(state: KeyboardState, actions: KeyboardActions) {
                         contentAlignment = Alignment.Center,
                     ) {
                         if (word != null) {
-                            Text(word, color = Glass.barText, fontSize = 18.sp, maxLines = 1)
+                            Text(
+                                word,
+                                color = Glass.barText,
+                                fontSize = 18.sp,
+                                fontWeight = if (i == 1) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1,
+                            )
                         }
                     }
                 }
@@ -406,7 +420,7 @@ private fun TapKey(
     content: @Composable () -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
-    val haptic = LocalHapticFeedback.current
+    val feedback = LocalKeyFeedback.current
     val tap by rememberUpdatedState(onTap)
     val longPress by rememberUpdatedState(onLongPress)
     KeySurface(
@@ -414,7 +428,7 @@ private fun TapKey(
             detectTapGestures(
                 onPress = {
                     pressed = true
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    feedback()
                     tryAwaitRelease()
                     pressed = false
                 },
@@ -433,14 +447,14 @@ private fun TapKey(
 @Composable
 private fun RepeatKey(modifier: Modifier, onRepeat: () -> Unit, content: @Composable () -> Unit) {
     var pressed by remember { mutableStateOf(false) }
-    val haptic = LocalHapticFeedback.current
+    val feedback = LocalKeyFeedback.current
     val action by rememberUpdatedState(onRepeat)
     KeySurface(
         modifier.pointerInput(Unit) {
             awaitEachGesture {
                 awaitFirstDown()
                 pressed = true
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                feedback()
                 action()
                 var released = withTimeoutOrNull(400) { waitForUpOrCancellation(); true } ?: false
                 while (!released) {
@@ -474,7 +488,7 @@ private fun CharKey(
     var keyWidth by remember { mutableFloatStateOf(0f) }
     var rootWidth by remember { mutableFloatStateOf(0f) }
 
-    val haptic = LocalHapticFeedback.current
+    val feedback = LocalKeyFeedback.current
     val density = LocalDensity.current
     val cellPx = with(density) { PopupCell.toPx() }
     val currentLabel by rememberUpdatedState(label)
@@ -502,7 +516,7 @@ private fun CharKey(
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     pressed = true
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    feedback()
                     val alts = currentAlternates
                     // null = long-press timeout, true = released, false = cancelled
                     val tapResult: Boolean? = if (alts.isEmpty()) {
@@ -523,7 +537,7 @@ private fun CharKey(
                                 floor((x - popupLeft) / cellPx).toInt().coerceIn(0, options.lastIndex)
                             selected = if (left) options.lastIndex else 0
                             popupOpen = true
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            feedback()
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -534,7 +548,7 @@ private fun CharKey(
                                 val idx = indexAt(change.position.x)
                                 if (idx != selected) {
                                     selected = idx
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    feedback()
                                 }
                                 change.consume()
                             }
@@ -657,43 +671,47 @@ private fun EmojiPanel(state: KeyboardState, actions: KeyboardActions) {
     }
 }
 
-/** 123 · emoji · , · [symbol slots] · space · [symbol slots] · . · enter */
+/** 123 · emoji · [symbol slots] · space · [symbol slots] · . · enter. Long-press "." for , ? ! and more. */
 @Composable
 private fun BottomRow(state: KeyboardState, slots: SymbolSlots, actions: KeyboardActions) {
     val s = slots.slots
-    val emptySlots = s.count { it == null }
+    val filledSlots = s.count { it != null }
     Row(Modifier.fillMaxWidth().height(RowHeight)) {
         if (state.page == Page.LETTERS) {
-            TapKey(Modifier.weight(1.2f), onTap = { actions.onPage(Page.SYMBOLS) }) {
-                Text("123", color = KeyText, fontSize = 18.sp)
+            TapKey(Modifier.weight(1.9f), onTap = { actions.onPage(Page.SYMBOLS) }) {
+                Text("123", color = KeyText, fontSize = 19.sp, fontWeight = FontWeight.Medium)
             }
         } else {
-            TapKey(Modifier.weight(1.2f), onTap = { actions.onPage(Page.LETTERS) }) {
-                Text("ABC", color = KeyText, fontSize = 18.sp)
+            TapKey(Modifier.weight(1.9f), onTap = { actions.onPage(Page.LETTERS) }) {
+                Text("ABC", color = KeyText, fontSize = 19.sp, fontWeight = FontWeight.Medium)
             }
         }
         TapKey(
-            Modifier.weight(1f),
+            Modifier.weight(1.1f),
             onTap = { actions.onPage(if (state.page == Page.EMOJI) Page.LETTERS else Page.EMOJI) },
         ) {
-            Icon(Icons.Outlined.EmojiEmotions, "Emoji", tint = KeyText)
+            Icon(Icons.Outlined.EmojiEmotions, "Emoji", tint = KeyText, modifier = Modifier.size(28.dp))
         }
-        CharTap(",", actions)
         s.getOrNull(0)?.let { CharTap(it, actions) }
         s.getOrNull(1)?.let { CharTap(it, actions) }
         TapKey(
-            Modifier.weight(2.2f + 0.5f * emptySlots),
+            Modifier.weight((4.1f - 0.6f * filledSlots).coerceAtLeast(2f)),
             role = KeyRole.SPACE,
             onLongPress = actions::onSpaceLongPress,
             onTap = actions::onSpace,
         ) {
-            Text(state.languageLabel, color = KeyText, fontSize = 17.sp)
+            Text(state.languageLabel, color = KeyText, fontSize = 18.sp, fontWeight = FontWeight.Medium)
         }
         s.getOrNull(2)?.let { CharTap(it, actions) }
         s.getOrNull(3)?.let { CharTap(it, actions) }
-        CharTap(".", actions)
-        TapKey(Modifier.weight(1.6f), role = KeyRole.ENTER, onTap = actions::onEnter) {
-            Icon(Icons.AutoMirrored.Outlined.KeyboardReturn, "Enter", tint = KeyText)
+        CharKey(
+            label = ".",
+            alternates = listOf(",", "?", "!", "'", "\"", ":", ";", "-"),
+            onCommit = actions::onText,
+            modifier = Modifier.weight(1.1f),
+        )
+        TapKey(Modifier.weight(1.8f), role = KeyRole.ENTER, onTap = actions::onEnter) {
+            Icon(Icons.AutoMirrored.Outlined.KeyboardReturn, "Enter", tint = KeyText, modifier = Modifier.size(28.dp))
         }
     }
 }

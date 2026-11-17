@@ -33,6 +33,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -61,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import com.glasskeyboard.data.SymbolKeysStore
 import com.glasskeyboard.data.SymbolSlots
 import com.glasskeyboard.data.ThemeStore
+import com.glasskeyboard.data.TypingStore
 import com.glasskeyboard.ime.KeyStyle
 import com.glasskeyboard.ime.KeyboardTheme
 import com.glasskeyboard.ime.Themes
@@ -78,6 +81,7 @@ class SettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val store = SymbolKeysStore(applicationContext)
         val themeStore = ThemeStore(applicationContext)
+        val typingStore = TypingStore(applicationContext)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Glass.accent, background = Glass.outer)) {
                 SettingsScreen(
@@ -85,6 +89,7 @@ class SettingsActivity : ComponentActivity() {
                     selected = selected,
                     store = store,
                     themeStore = themeStore,
+                    typingStore = typingStore,
                     onEnable = { startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) },
                     onSelect = { getSystemService(InputMethodManager::class.java).showInputMethodPicker() },
                 )
@@ -117,6 +122,7 @@ private fun SettingsScreen(
     selected: Boolean,
     store: SymbolKeysStore,
     themeStore: ThemeStore,
+    typingStore: TypingStore,
     onEnable: () -> Unit,
     onSelect: () -> Unit,
 ) {
@@ -151,6 +157,17 @@ private fun SettingsScreen(
         ThemePicker(selected = Themes.byId(themeId), style = style) { theme ->
             scope.launch { themeStore.setTheme(theme.id) }
         }
+
+        SectionHeader("≋", "TYPING")
+        val vibration by typingStore.vibration.collectAsState(initial = true)
+        val learning by typingStore.learning.collectAsState(initial = true)
+        TypingSettings(
+            vibration = vibration,
+            learning = learning,
+            onVibration = { scope.launch { typingStore.setVibration(it) } },
+            onLearning = { scope.launch { typingStore.setLearning(it) } },
+            onClearLearned = { scope.launch { typingStore.clearLearned() } },
+        )
 
         SectionHeader("@", "SYMBOL KEYS")
         Text(
@@ -249,7 +266,6 @@ private fun SymbolSlotEditor(slots: SymbolSlots, onEdit: (Int) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FixedKey(",")
         Slot(slots.slots[0]) { onEdit(0) }
         Slot(slots.slots[1]) { onEdit(1) }
         Box(
@@ -502,5 +518,62 @@ private fun MiniKey(theme: KeyboardTheme, style: KeyStyle, color: Color, modifie
                     .background(Brush.verticalGradient(listOf(lerp(solid, Color.White, 0.18f), solid))),
             )
         }
+    }
+}
+
+/** Vibration and word-learning switches. */
+@Composable
+internal fun TypingSettings(
+    vibration: Boolean,
+    learning: Boolean,
+    onVibration: (Boolean) -> Unit,
+    onLearning: (Boolean) -> Unit,
+    onClearLearned: () -> Unit,
+) {
+    var cleared by remember { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .border(1.dp, Glass.border, RoundedCornerShape(18.dp))
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    ) {
+        SwitchRow("Smooth vibration", "A soft tick each time you press a key.", vibration, onVibration)
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Glass.border))
+        SwitchRow(
+            "Learn my words",
+            "Remembers words you type so predictions get better. Stays on this phone; never in password fields.",
+            learning,
+            onLearning,
+        )
+        TextButton(
+            onClick = {
+                onClearLearned()
+                cleared = true
+            },
+            enabled = !cleared,
+        ) { Text(if (cleared) "Learned words cleared" else "Clear learned words") }
+    }
+}
+
+@Composable
+private fun SwitchRow(title: String, body: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onChange(!checked) }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(body, color = Glass.hint, fontSize = 13.sp)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(checkedTrackColor = Glass.accent),
+        )
     }
 }

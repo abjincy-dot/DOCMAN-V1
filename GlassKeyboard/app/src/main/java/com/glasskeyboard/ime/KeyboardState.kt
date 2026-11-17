@@ -10,7 +10,7 @@ enum class ShiftState { OFF, ON, LOCKED }
 class KeyboardState {
     var page by mutableStateOf(Page.LETTERS)
     var shift by mutableStateOf(ShiftState.OFF)
-    var suggestions by mutableStateOf(Suggestions.defaults)
+    var suggestions by mutableStateOf(Predictor.START)
     var suggestionsEnabled by mutableStateOf(true)
     var languageLabel by mutableStateOf("space")
     var emojiGroups by mutableStateOf<List<EmojiGroup>>(emptyList())
@@ -20,6 +20,8 @@ class KeyboardState {
 /** Everything a key press can ask the service to do. */
 interface KeyboardActions {
     fun onText(text: String)
+    /** A key was pressed: give vibration feedback if it is turned on. */
+    fun onKeyDown()
     fun onEmoji(emoji: String)
     fun onBackspace()
     fun onShift()
