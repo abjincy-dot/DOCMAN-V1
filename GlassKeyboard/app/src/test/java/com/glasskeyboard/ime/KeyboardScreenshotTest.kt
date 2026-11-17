@@ -104,7 +104,7 @@ class KeyboardScreenshotTest {
         compose.setContent {
             androidx.compose.foundation.layout.Box(
                 androidx.compose.ui.Modifier.background(Themes.Aurora.outer).padding(20.dp)
-            ) { com.glasskeyboard.ui.TypingSettings(true, VibrationLevel.MEDIUM, true, {}, {}, {}, {}) }
+            ) { com.glasskeyboard.ui.TypingSettings(0.3f, true, {}, {}, {}, {}) }
         }
         save("settings_typing")
     }

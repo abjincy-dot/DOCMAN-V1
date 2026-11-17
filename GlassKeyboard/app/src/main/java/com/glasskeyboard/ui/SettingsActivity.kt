@@ -69,7 +69,7 @@ import com.glasskeyboard.data.TypingStore
 import com.glasskeyboard.ime.KeyStyle
 import com.glasskeyboard.ime.KeyboardHeight
 import com.glasskeyboard.ime.KeyVibrator
-import com.glasskeyboard.ime.VibrationLevel
+import com.glasskeyboard.ime.VibrationStrength
 import com.glasskeyboard.ime.KeyboardTheme
 import com.glasskeyboard.ime.Themes
 import com.glasskeyboard.ime.glassBackground
@@ -165,20 +165,15 @@ private fun SettingsScreen(
         }
 
         SectionHeader("≋", "TYPING")
-        val vibration by typingStore.vibration.collectAsState(initial = true)
-        val levelId by typingStore.vibrationLevel.collectAsState(initial = null)
+        val strength by typingStore.vibrationStrength.collectAsState(initial = VibrationStrength.DEFAULT)
         val learning by typingStore.learning.collectAsState(initial = true)
         val context = androidx.compose.ui.platform.LocalContext.current
         val keyVibrator = remember { KeyVibrator(context) }
         TypingSettings(
-            vibration = vibration,
-            level = VibrationLevel.byId(levelId),
+            strength = strength,
             learning = learning,
-            onVibration = { scope.launch { typingStore.setVibration(it) } },
-            onLevel = { picked ->
-                keyVibrator.tick(picked) // let the user feel the new strength
-                scope.launch { typingStore.setVibrationLevel(picked.id) }
-            },
+            onStrengthPreview = keyVibrator::tick, // feel each step while sliding
+            onStrength = { scope.launch { typingStore.setVibrationStrength(it) } },
             onLearning = { scope.launch { typingStore.setLearning(it) } },
             onClearLearned = { scope.launch { typingStore.clearLearned() } },
         )
@@ -539,14 +534,13 @@ private fun MiniKey(theme: KeyboardTheme, style: KeyStyle, color: Color, modifie
     }
 }
 
-/** Vibration and word-learning switches. */
+/** Vibration strength slider and word-learning switch. */
 @Composable
 internal fun TypingSettings(
-    vibration: Boolean,
-    level: VibrationLevel,
+    strength: Float,
     learning: Boolean,
-    onVibration: (Boolean) -> Unit,
-    onLevel: (VibrationLevel) -> Unit,
+    onStrengthPreview: (Float) -> Unit,
+    onStrength: (Float) -> Unit,
     onLearning: (Boolean) -> Unit,
     onClearLearned: () -> Unit,
 ) {
@@ -559,34 +553,7 @@ internal fun TypingSettings(
             .border(1.dp, Glass.border, RoundedCornerShape(18.dp))
             .padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
-        SwitchRow("Smooth vibration", "A soft tick each time you press a key.", vibration, onVibration)
-        if (vibration) {
-            Text("Strength", color = Glass.hint, fontSize = 13.sp)
-            Row(
-                Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                VibrationLevel.entries.forEach { l ->
-                    val selected = l == level
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .height(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (selected) Glass.accent else Color.White.copy(alpha = 0.08f))
-                            .clickable { onLevel(l) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            l.label,
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    }
-                }
-            }
-        }
+        VibrationSlider(strength, onStrengthPreview, onStrength)
         Box(Modifier.fillMaxWidth().height(1.dp).background(Glass.border))
         SwitchRow(
             "Learn my words",
@@ -601,6 +568,42 @@ internal fun TypingSettings(
             },
             enabled = !cleared,
         ) { Text(if (cleared) "Learned words cleared" else "Clear learned words") }
+    }
+}
+
+/** Volume-style slider: 0% = vibration off. Each step gives a sample vibration while sliding. */
+@Composable
+private fun VibrationSlider(saved: Float, onPreview: (Float) -> Unit, onSave: (Float) -> Unit) {
+    var value by remember(saved) { mutableStateOf(saved) }
+    Column(Modifier.padding(top = 12.dp, bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Vibration", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("A soft tick each time you press a key.", color = Glass.hint, fontSize = 13.sp)
+            }
+            Text(
+                if (value <= 0f) "Off" else "${(value * 100).roundToInt()}%",
+                color = Glass.accentIcon,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("🔈", fontSize = 16.sp)
+            Slider(
+                value = value,
+                onValueChange = { new ->
+                    if (new != value) onPreview(new)
+                    value = new
+                },
+                onValueChangeFinished = { onSave(value) },
+                valueRange = 0f..1f,
+                steps = VibrationStrength.STEPS,
+                colors = SliderDefaults.colors(thumbColor = Glass.accent, activeTrackColor = Glass.accent),
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+            )
+            Text("🔊", fontSize = 16.sp)
+        }
     }
 }
 
@@ -663,7 +666,7 @@ internal fun KeyboardHeightSetting(saved: Float, onSave: (Float) -> Unit) {
                     }.padding(horizontal = 12.dp),
                 )
             }
-            Text("Taller", color = Glass.hint, fontSize = 13.sp)
+            Text("Normal", color = Glass.hint, fontSize = 13.sp)
         }
     }
 }

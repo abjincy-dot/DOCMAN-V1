@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
@@ -146,11 +147,12 @@ fun KeyboardScreen(
                 .border(1.dp, Glass.border, RoundedCornerShape(22.dp))
                 .padding(horizontal = 3.dp, vertical = 4.dp)
         ) {
-            TopBar(state, actions)
+            val emojiNav = rememberEmojiNav(state)
+            TopBar(state, actions, emojiNav)
             when (state.page) {
                 Page.LETTERS -> KeyRows(Layouts.englishLetters, state, actions)
                 Page.SYMBOLS -> KeyRows(Layouts.symbols, state, actions)
-                Page.EMOJI -> EmojiPanel(state, actions)
+                Page.EMOJI -> EmojiPanel(emojiNav, actions)
             }
             BottomRow(state, slots, actions)
         }
@@ -158,13 +160,18 @@ fun KeyboardScreen(
 }
 
 @Composable
-private fun TopBar(state: KeyboardState, actions: KeyboardActions) {
+private fun TopBar(state: KeyboardState, actions: KeyboardActions, emojiNav: EmojiNav) {
     Row(
         Modifier
             .fillMaxWidth()
             .height(maxOf(36.dp, 46.dp * LocalHeightScale.current)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (state.page == Page.EMOJI) {
+            // On the emoji page the top bar holds the emoji categories instead of word suggestions.
+            EmojiCategories(emojiNav, Modifier.weight(1f).fillMaxHeight())
+            return@Row
+        }
         DotsMenuButton(actions::onOpenSettings)
         Row(Modifier.weight(1f).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {
             val words = state.suggestions
@@ -604,9 +611,14 @@ private fun CharKey(
     }
 }
 
-/** Full emoji picker: one scrolling grid with a category bar (and delete key) underneath. */
+/** Emoji groups (with "Recent" first when there are any) and the grid position shared by the grid and the top bar. */
+private class EmojiNav(val groups: List<EmojiGroup>, val starts: List<Int>, val grid: LazyGridState) {
+    /** Index of the group at the top of the grid. */
+    val current: Int get() = starts.indexOfLast { it <= grid.firstVisibleItemIndex }.coerceAtLeast(0)
+}
+
 @Composable
-private fun EmojiPanel(state: KeyboardState, actions: KeyboardActions) {
+private fun rememberEmojiNav(state: KeyboardState): EmojiNav {
     val groups = remember(state.emojiGroups, state.recentEmoji) {
         buildList {
             if (state.recentEmoji.isNotEmpty()) {
@@ -621,56 +633,56 @@ private fun EmojiPanel(state: KeyboardState, actions: KeyboardActions) {
         groups.map { g -> i.also { i += 1 + g.emojis.size } }
     }
     val grid = rememberLazyGridState()
-    val scope = rememberCoroutineScope()
-    val current by remember(starts) {
-        derivedStateOf { starts.indexOfLast { it <= grid.firstVisibleItemIndex }.coerceAtLeast(0) }
-    }
+    return remember(groups, starts, grid) { EmojiNav(groups, starts, grid) }
+}
 
-    Column(Modifier.fillMaxWidth().height(RowHeight * 4)) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(8),
-            state = grid,
-            modifier = Modifier.fillMaxWidth().weight(1f),
-        ) {
-            groups.forEach { g ->
-                item(key = "header_${g.name}", span = { GridItemSpan(maxLineSpan) }) {
-                    Text(
-                        g.name,
-                        color = Glass.barText.copy(alpha = 0.7f),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
-                    )
-                }
-                items(g.emojis, key = { "${g.name}_$it" }) { e ->
-                    Box(
-                        Modifier
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { actions.onEmoji(e) },
-                        contentAlignment = Alignment.Center,
-                    ) { Text(e, fontSize = 26.sp) }
-                }
-            }
+/** Category icons for the top bar; tap one to jump to it. */
+@Composable
+private fun EmojiCategories(nav: EmojiNav, modifier: Modifier) {
+    val scope = rememberCoroutineScope()
+    val current by remember(nav) { derivedStateOf { nav.current } }
+    Row(modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        nav.groups.forEachIndexed { i, g ->
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(horizontal = 2.dp, vertical = 5.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (i == current) Glass.accent.copy(alpha = 0.35f) else Color.Transparent)
+                    .clickable { scope.launch { nav.grid.scrollToItem(nav.starts[i]) } },
+                contentAlignment = Alignment.Center,
+            ) { Text(g.icon, fontSize = 19.sp) }
         }
-        Row(
-            Modifier.fillMaxWidth().height(44.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            groups.forEachIndexed { i, g ->
+    }
+}
+
+/** Full emoji picker: one scrolling grid with a heading for each category. */
+@Composable
+private fun EmojiPanel(nav: EmojiNav, actions: KeyboardActions) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(8),
+        state = nav.grid,
+        modifier = Modifier.fillMaxWidth().height(RowHeight * 4),
+    ) {
+        nav.groups.forEach { g ->
+            item(key = "header_${g.name}", span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    g.name,
+                    color = Glass.barText.copy(alpha = 0.7f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
+                )
+            }
+            items(g.emojis, key = { "${g.name}_$it" }) { e ->
                 Box(
                     Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(3.dp)
+                        .height(44.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (i == current) Glass.accent.copy(alpha = 0.35f) else Color.Transparent)
-                        .clickable { scope.launch { grid.scrollToItem(starts[i]) } },
+                        .clickable { actions.onEmoji(e) },
                     contentAlignment = Alignment.Center,
-                ) { Text(g.icon, fontSize = 18.sp) }
-            }
-            RepeatKey(Modifier.weight(1.4f), onRepeat = actions::onBackspace) {
-                Icon(Icons.AutoMirrored.Outlined.Backspace, "Delete", tint = KeyText)
+                ) { Text(e, fontSize = 26.sp) }
             }
         }
     }
@@ -709,12 +721,19 @@ private fun BottomRow(state: KeyboardState, slots: SymbolSlots, actions: Keyboar
         }
         s.getOrNull(2)?.let { CharTap(it, actions) }
         s.getOrNull(3)?.let { CharTap(it, actions) }
-        CharKey(
-            label = ".",
-            alternates = listOf(",", "?", "!", "'", "\"", ":", ";", "-"),
-            onCommit = actions::onText,
-            modifier = Modifier.weight(1.1f),
-        )
+        if (state.page == Page.EMOJI) {
+            // The emoji page has no other delete key, so it takes the "." position.
+            RepeatKey(Modifier.weight(1.1f), onRepeat = actions::onBackspace) {
+                Icon(Icons.AutoMirrored.Outlined.Backspace, "Delete", tint = KeyText)
+            }
+        } else {
+            CharKey(
+                label = ".",
+                alternates = listOf(",", "?", "!", "'", "\"", ":", ";", "-"),
+                onCommit = actions::onText,
+                modifier = Modifier.weight(1.1f),
+            )
+        }
         TapKey(Modifier.weight(1.8f), role = KeyRole.ENTER, onTap = actions::onEnter) {
             Icon(Icons.AutoMirrored.Outlined.KeyboardReturn, "Enter", tint = KeyText, modifier = Modifier.size(28.dp))
         }

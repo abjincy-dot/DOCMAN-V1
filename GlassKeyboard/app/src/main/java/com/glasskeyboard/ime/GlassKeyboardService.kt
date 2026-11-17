@@ -50,14 +50,17 @@ class GlassKeyboardService : InputMethodService(),
     override val viewModelStore: ViewModelStore get() = store
     override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
 
-    private val state = KeyboardState()
+    /** Internal so tests can check what the keyboard shows. */
+    internal val state = KeyboardState()
     private lateinit var symbolKeys: SymbolKeysStore
     private lateinit var themeStore: ThemeStore
     private lateinit var recentEmoji: RecentEmojiStore
     private lateinit var typing: TypingStore
     private var predictor: Predictor? = null
-    private var vibrationOn = true
-    private var vibrationLevel = VibrationLevel.DEFAULT
+
+    /** True once the word list has loaded (used by tests). */
+    internal val predictionsReady: Boolean get() = predictor != null
+    private var vibrationStrength = VibrationStrength.DEFAULT
     private var learningOn = true
     private val learnedFile by lazy { File(noBackupFilesDir, "learned_words.tsv") }
     private val vibrator by lazy { KeyVibrator(this) }
@@ -80,8 +83,7 @@ class GlassKeyboardService : InputMethodService(),
             }
             refresh()
         }
-        lifecycleScope.launch { typing.vibration.collect { vibrationOn = it } }
-        lifecycleScope.launch { typing.vibrationLevel.collect { vibrationLevel = VibrationLevel.byId(it) } }
+        lifecycleScope.launch { typing.vibrationStrength.collect { vibrationStrength = it } }
         lifecycleScope.launch { typing.learning.collect { learningOn = it } }
         lifecycleScope.launch {
             // Skip the current value; react only when the user taps "Clear learned words".
@@ -203,7 +205,7 @@ class GlassKeyboardService : InputMethodService(),
     // ---- KeyboardActions ----
 
     override fun onKeyDown() {
-        if (vibrationOn) vibrator.tick(vibrationLevel)
+        vibrator.tick(vibrationStrength)
     }
 
     override fun onText(text: String) {
@@ -212,6 +214,9 @@ class GlassKeyboardService : InputMethodService(),
         val out = if (state.shift != ShiftState.OFF && text.length == 1 && text[0].isLetter()) text.uppercase() else text
         ic.commitText(out, 1)
         if (state.shift == ShiftState.ON) state.shift = ShiftState.OFF
+        // Update suggestions right away instead of waiting for the app to report the cursor move,
+        // which some apps do late or not at all.
+        refresh()
     }
 
     override fun onEmoji(emoji: String) {
@@ -223,6 +228,7 @@ class GlassKeyboardService : InputMethodService(),
         val ic = currentInputConnection ?: return
         if (!ic.getSelectedText(0).isNullOrEmpty()) ic.commitText("", 1)
         else sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+        refresh()
     }
 
     override fun onShift() {
@@ -248,6 +254,7 @@ class GlassKeyboardService : InputMethodService(),
         } else {
             ic.commitText(" ", 1)
         }
+        refresh()
     }
 
     override fun onSpaceLongPress() {
@@ -274,6 +281,7 @@ class GlassKeyboardService : InputMethodService(),
         ic.deleteSurroundingText(current.length, 0)
         ic.commitText("$word ", 1)
         ic.endBatchEdit()
+        refresh()
     }
 
     override fun onPage(page: Page) {
