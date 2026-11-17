@@ -33,6 +33,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -65,6 +67,7 @@ import com.glasskeyboard.data.SymbolSlots
 import com.glasskeyboard.data.ThemeStore
 import com.glasskeyboard.data.TypingStore
 import com.glasskeyboard.ime.KeyStyle
+import com.glasskeyboard.ime.KeyboardHeight
 import com.glasskeyboard.ime.KeyVibrator
 import com.glasskeyboard.ime.VibrationLevel
 import com.glasskeyboard.ime.KeyboardTheme
@@ -72,6 +75,7 @@ import com.glasskeyboard.ime.Themes
 import com.glasskeyboard.ime.glassBackground
 import com.glasskeyboard.ime.Glass
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /** Launcher screen: enable the keyboard, edit the symbol keys, and try it out. */
 class SettingsActivity : ComponentActivity() {
@@ -178,6 +182,10 @@ private fun SettingsScreen(
             onLearning = { scope.launch { typingStore.setLearning(it) } },
             onClearLearned = { scope.launch { typingStore.clearLearned() } },
         )
+
+        SectionHeader("↕", "KEYBOARD HEIGHT")
+        val savedHeight by typingStore.keyboardHeight.collectAsState(initial = KeyboardHeight.DEFAULT)
+        KeyboardHeightSetting(savedHeight) { scope.launch { typingStore.setKeyboardHeight(it) } }
 
         SectionHeader("@", "SYMBOL KEYS")
         Text(
@@ -614,5 +622,48 @@ private fun SwitchRow(title: String, body: String, checked: Boolean, onChange: (
             onCheckedChange = onChange,
             colors = SwitchDefaults.colors(checkedTrackColor = Glass.accent),
         )
+    }
+}
+
+/** Slider for the keyboard height (75% to 115% of normal), saved when the finger lifts. */
+@Composable
+internal fun KeyboardHeightSetting(saved: Float, onSave: (Float) -> Unit) {
+    var value by remember(saved) { mutableStateOf(saved) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .border(1.dp, Glass.border, RoundedCornerShape(18.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Height", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("${(value * 100).roundToInt()}%", color = Glass.accentIcon, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Slider(
+            value = value,
+            onValueChange = { value = it },
+            onValueChangeFinished = { onSave(value) },
+            valueRange = KeyboardHeight.MIN..KeyboardHeight.MAX,
+            steps = KeyboardHeight.STEPS,
+            colors = SliderDefaults.colors(thumbColor = Glass.accent, activeTrackColor = Glass.accent),
+        )
+        Row {
+            Text("Shorter", color = Glass.hint, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            if (value != KeyboardHeight.DEFAULT) {
+                Text(
+                    "Reset",
+                    color = Glass.accentIcon,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable {
+                        value = KeyboardHeight.DEFAULT
+                        onSave(KeyboardHeight.DEFAULT)
+                    }.padding(horizontal = 12.dp),
+                )
+            }
+            Text("Taller", color = Glass.hint, fontSize = 13.sp)
+        }
     }
 }

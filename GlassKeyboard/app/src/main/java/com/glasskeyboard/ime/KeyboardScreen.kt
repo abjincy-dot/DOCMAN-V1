@@ -57,6 +57,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,7 +79,9 @@ import kotlin.math.floor
 import kotlin.math.roundToInt
 
 private val KeyShape = RoundedCornerShape(12.dp)
-private val RowHeight = 54.dp
+/** Keyboard height setting: 1.0 = normal. Rows and the top bar scale with it. */
+private val LocalHeightScale = staticCompositionLocalOf { 1f }
+private val RowHeight: Dp @Composable get() = 54.dp * LocalHeightScale.current
 private val PopupCell = 42.dp
 private val PebbleShape = RoundedCornerShape(percent = 40)
 
@@ -121,7 +124,9 @@ fun KeyboardScreen(
     actions: KeyboardActions,
     theme: KeyboardTheme = Themes.Aurora,
     style: KeyStyle = KeyStyle.DEFAULT,
+    heightScale: Float = 1f,
 ) = CompositionLocalProvider(
+    LocalHeightScale provides heightScale.coerceIn(KeyboardHeight.MIN, KeyboardHeight.MAX),
     LocalKeyboardTheme provides theme,
     LocalKeyStyle provides style,
     LocalKeyFeedback provides actions::onKeyDown,
@@ -157,7 +162,7 @@ private fun TopBar(state: KeyboardState, actions: KeyboardActions) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(46.dp),
+            .height(maxOf(36.dp, 46.dp * LocalHeightScale.current)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         DotsMenuButton(actions::onOpenSettings)

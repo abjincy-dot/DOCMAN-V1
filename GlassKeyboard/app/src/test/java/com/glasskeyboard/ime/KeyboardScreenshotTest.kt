@@ -109,6 +109,20 @@ class KeyboardScreenshotTest {
         save("settings_typing")
     }
 
+    @Test fun shorterKeyboard() {
+        compose.setContent { KeyboardScreen(KeyboardState(), SymbolSlots.DEFAULT, noOp, Themes.Sunset, KeyStyle.PEBBLE, 0.8f) }
+        save("height_80")
+    }
+
+    @Test fun heightSetting() {
+        compose.setContent {
+            androidx.compose.foundation.layout.Box(
+                androidx.compose.ui.Modifier.background(Themes.Aurora.outer).padding(20.dp)
+            ) { com.glasskeyboard.ui.KeyboardHeightSetting(0.8f) {} }
+        }
+        save("settings_height")
+    }
+
     @Test fun emojiPanel() {
         val state = KeyboardState().apply {
             page = Page.EMOJI

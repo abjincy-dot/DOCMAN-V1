@@ -106,12 +106,14 @@ class GlassKeyboardService : InputMethodService(),
                 val slots by symbolKeys.slots.collectAsState(initial = SymbolSlots.DEFAULT)
                 val themeId by themeStore.themeId.collectAsState(initial = null)
                 val styleId by themeStore.keyStyle.collectAsState(initial = null)
+                val heightScale by typing.keyboardHeight.collectAsState(initial = KeyboardHeight.DEFAULT)
                 KeyboardScreen(
                     state = state,
                     slots = slots,
                     actions = this@GlassKeyboardService,
                     theme = Themes.byId(themeId),
                     style = KeyStyle.byId(styleId),
+                    heightScale = heightScale,
                 )
             }
         }
